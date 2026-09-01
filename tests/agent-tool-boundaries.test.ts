@@ -17,10 +17,14 @@ describe("root and worker capability boundaries", () => {
     expect(toolFiles(rootTools)).toEqual([
       "agent.ts",
       "ask_question.ts",
+      "cancel_follow_up.ts",
+      "create_follow_up.ts",
       "google_workspace_read.ts",
       "google_workspace_write.ts",
+      "list_follow_ups.ts",
       "request_vault_import.ts",
       "request_vault_setup.ts",
+      "update_follow_up.ts",
     ]);
     expect(existsSync(`${rootTools}/sendMessage.ts`)).toBe(false);
     expect(existsSync("agent/extensions/kernel/extension.ts")).toBe(false);

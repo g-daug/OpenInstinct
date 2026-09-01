@@ -12,6 +12,8 @@ import {
   browserTraces,
   chats,
   encryptedSecrets,
+  followUps,
+  linqToolConfirmations,
   session,
   settings,
   user,
@@ -37,6 +39,8 @@ describe("database schema", () => {
         browserTraceEvents,
         chats,
         encryptedSecrets,
+        followUps,
+        linqToolConfirmations,
         user,
         session,
         account,
@@ -55,6 +59,8 @@ describe("database schema", () => {
       "browser_trace_events",
       "chats",
       "encrypted_secrets",
+      "follow_ups",
+      "linq_tool_confirmations",
       "user",
       "session",
       "account",
@@ -68,6 +74,7 @@ describe("database schema", () => {
       browserImageArtifacts,
       browserSessions,
       browserTraces,
+      followUps,
     ]) {
       const foreignKeys = getTableConfig(table).foreignKeys;
       expect(foreignKeys.map((foreignKey) => foreignKey.getName())).toContain(
@@ -173,6 +180,8 @@ describe("migration deployment policy", () => {
         "browser-traces",
         "browsers",
         "chats",
+        "follow-ups",
+        "linq-tool-confirmations",
         "scope",
         "secrets",
         "sessions",

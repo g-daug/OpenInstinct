@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { parseCalendarAvailability } from "@/agent/lib/google-workspace/calendar";
 import { googleWorkspaceAuthOptions } from "@/agent/lib/google-workspace/client";
 import { gmailUpdateLabels } from "@/agent/lib/google-workspace/gmail";
-import { googleWorkspaceWriteApproval } from "@/agent/tools/google_workspace_write";
+import {
+  googleWorkspaceWriteApproval,
+  googleWorkspaceWriteApprovalForSession,
+} from "@/agent/tools/google_workspace_write";
 import {
   googleWorkspaceScopes,
   googleWorkspaceSubject,
@@ -44,6 +47,14 @@ describe("Google Workspace", () => {
     });
     expect(googleWorkspaceWriteApproval("update_email")).toBe("not-applicable");
     expect(googleWorkspaceWriteApproval("send_email")).toBe("user-approval");
+    expect(
+      googleWorkspaceWriteApprovalForSession("send_email", {
+        linqThreadId: "linq:dm:example",
+      })
+    ).toBe("not-applicable");
+    expect(googleWorkspaceWriteApprovalForSession("send_email", {})).toBe(
+      "user-approval"
+    );
   });
 
   it("does not treat calendar API errors as availability", () => {

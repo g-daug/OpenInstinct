@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   doublePrecision,
   foreignKey,
@@ -298,6 +299,80 @@ export const chats = pgTable(
       table.workspaceId,
       table.updatedAt.desc().nullsFirst()
     ),
+  ]
+);
+
+export const followUps = pgTable(
+  "follow_ups",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    createdByUserId: text("created_by_user_id").notNull(),
+    prompt: text("prompt").notNull(),
+    timezone: text("timezone").notNull(),
+    recurrence: text("recurrence").notNull(),
+    nextRunAt: text("next_run_at").notNull(),
+    linqThreadId: text("linq_thread_id").notNull(),
+    authenticator: text("authenticator").notNull(),
+    issuer: text("issuer"),
+    subject: text("subject"),
+    phoneNumber: text("phone_number"),
+    enabled: boolean("enabled").notNull().default(true),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    lastRunAt: text("last_run_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "follow_ups_membership_fkey",
+      columns: [table.workspaceId, table.createdByUserId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+    }).onDelete("cascade"),
+    check(
+      "follow_ups_recurrence_check",
+      sql`${table.recurrence} IN ('once', 'daily', 'weekly', 'weekdays')`
+    ),
+    index("follow_ups_due_idx").on(
+      table.enabled,
+      table.nextRunAt,
+      table.leaseExpiresAt
+    ),
+    index("follow_ups_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt.desc().nullsFirst()
+    ),
+  ]
+);
+
+export const linqToolConfirmations = pgTable(
+  "linq_tool_confirmations",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    principalId: text("principal_id").notNull(),
+    action: text("action").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    consumedAt: text("consumed_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    check(
+      "linq_tool_confirmations_action_check",
+      sql`${table.action} IN ('send_email', 'create_calendar_event')`
+    ),
+    index("linq_tool_confirmations_session_idx").on(
+      table.sessionId,
+      table.principalId,
+      table.createdAt.desc().nullsFirst()
+    ),
+    index("linq_tool_confirmations_expires_idx").on(table.expiresAt),
   ]
 );
 

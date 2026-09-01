@@ -1,11 +1,4 @@
-import {
-  BotIcon,
-  CloudIcon,
-  ImageIcon,
-  MailIcon,
-  MessageSquareIcon,
-} from "lucide-react";
-import Link from "next/link";
+import { BotIcon, CloudIcon, ImageIcon, MailIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   getTokenResponse,
@@ -14,12 +7,12 @@ import {
 } from "@vercel/connect";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { getGatewayModel } from "@/db/services/settings";
 import { env } from "@/env";
 import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
 import { requireRequestScope } from "@/lib/request-scope";
 import { GoogleWorkspaceAction } from "./_components/google-workspace-action";
+import { ChannelsSection } from "./_components/channels-section";
 import { ModelSelector } from "./_components/model-selector";
 
 export default async function Page({ searchParams }: PageProps<"/">) {
@@ -151,83 +144,6 @@ async function readGoogleWorkspaceConnection(
     }
     return { accountLabel: null, state: "unavailable" };
   }
-}
-
-export function ChannelsSection({
-  browserReady,
-  linqConfigured,
-  linqPhoneNumber,
-}: {
-  readonly browserReady: boolean;
-  readonly linqConfigured: boolean;
-  readonly linqPhoneNumber?: string;
-}) {
-  return (
-    <WorkspaceSection headingId="channels-heading" title="Channels">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {browserReady ? (
-          <Button
-            className="h-11 justify-start"
-            nativeButton={false}
-            render={<Link href="/chat" />}
-            variant="outline"
-          >
-            <MessageSquareIcon />
-            WebChat
-          </Button>
-        ) : (
-          <Button className="h-11 justify-start" disabled variant="outline">
-            <MessageSquareIcon />
-            WebChat
-          </Button>
-        )}
-        {linqConfigured && linqPhoneNumber ? (
-          <Button
-            className="h-11 justify-start"
-            nativeButton={false}
-            render={<a href={`sms:${linqPhoneNumber}`} />}
-            variant="outline"
-          >
-            <MailIcon />
-            iMessage
-          </Button>
-        ) : (
-          <Button className="h-11 justify-start" disabled variant="outline">
-            <MailIcon />
-            iMessage
-          </Button>
-        )}
-      </div>
-      <p className="type-caption text-muted-foreground">
-        {channelAvailabilityMessage({
-          browserReady,
-          linqConfigured,
-          linqPhoneNumber,
-        })}
-      </p>
-    </WorkspaceSection>
-  );
-}
-
-function channelAvailabilityMessage({
-  browserReady,
-  linqConfigured,
-  linqPhoneNumber,
-}: {
-  readonly browserReady: boolean;
-  readonly linqConfigured: boolean;
-  readonly linqPhoneNumber?: string;
-}) {
-  return [
-    browserReady
-      ? "WebChat is ready."
-      : "KERNEL_API_KEY is required to enable WebChat.",
-    linqConfigured && linqPhoneNumber
-      ? `iMessage opens ${linqPhoneNumber}.`
-      : linqConfigured
-        ? "Linq is connected. Use its assigned line to start an iMessage."
-        : "Set up Linq to enable iMessage.",
-  ].join(" ");
 }
 
 function WorkspaceSection({

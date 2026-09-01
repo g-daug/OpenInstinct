@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access -- Eve's Linq adapter exposes the thread through a transitive Chat SDK type; TypeScript still checks this contextual handler. */
+/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access -- Eve's Linq adapter exposes the thread through a transitive Chat SDK type; TypeScript still checks this contextual handler. The versioned module name intentionally retires sessions that were wedged by legacy text approvals. */
 import { connectLinqCredentials } from "@vercel/connect/eve";
 import {
   defaultLinqAuth,
@@ -35,6 +35,7 @@ const cancelledWorkerTaskSchema = z.object({
 const workerCancellationsSchema = z.array(
   z.object({ sourceMessageId: z.string(), taskId: z.string() })
 );
+const pendingLinqInputRequestIdsSchema = z.array(z.string());
 const markdownListItemPattern = /^\s*(?:[-+*]|\d+[.)])\s+/u;
 
 function splitLinqReply(message: string) {
@@ -87,6 +88,83 @@ const credentials: LinqChannelCredentials = env.LINQ_CONNECTOR
 export const linqChannelConfig = {
   credentials,
   events: {
+    async "input.requested"(event, context) {
+      if (!context.thread) return;
+
+      const parsedRequestIds = pendingLinqInputRequestIdsSchema.safeParse(
+        context.state.pendingLinqInputRequestIds
+      );
+      const pendingRequestIds = new Set(
+        parsedRequestIds.success ? parsedRequestIds.data : []
+      );
+      for (const request of event.requests) {
+        if (pendingRequestIds.has(request.requestId)) continue;
+
+        await context.thread.post({ markdown: request.prompt });
+        if (request.options && request.options.length > 0) {
+          await context.thread.post({
+            markdown: `Reply with one of: ${request.options
+              .map((option) => option.label)
+              .join(", ")}.`,
+          });
+        } else {
+          await context.thread.post({ markdown: "Reply with your answer." });
+        }
+        pendingRequestIds.add(request.requestId);
+      }
+      context.state.pendingLinqInputRequestIds = [...pendingRequestIds];
+    },
+    async "approval.settled"(event, context) {
+      const parsedRequestIds = pendingLinqInputRequestIdsSchema.safeParse(
+        context.state.pendingLinqInputRequestIds
+      );
+      if (!parsedRequestIds.success) return;
+
+      const pendingRequestIds = new Set(parsedRequestIds.data);
+      if (!pendingRequestIds.delete(event.requestId)) return;
+      context.state.pendingLinqInputRequestIds = [...pendingRequestIds];
+      if (context.thread) {
+        await context.thread.post({
+          markdown:
+            event.outcome === "approved"
+              ? "Approved. Continuing..."
+              : "Cancelled.",
+        });
+      }
+    },
+    async "authorization.required"(event, context) {
+      if (!context.thread || event.candidateId !== undefined) return;
+
+      const pendingAuthorizationMessages =
+        context.state.pendingAuthMessageIds ?? {};
+      if (pendingAuthorizationMessages[event.name] !== undefined) return;
+
+      const displayName =
+        event.authorization?.displayName ??
+        (event.name.length === 0
+          ? event.name
+          : `${event.name.charAt(0).toUpperCase()}${event.name.slice(1)}`);
+      const messages = [
+        `Authorization required for ${displayName}.`,
+        event.authorization?.instructions,
+        event.authorization?.userCode
+          ? `Code: ${event.authorization.userCode}`
+          : undefined,
+        event.authorization?.url,
+      ].filter((message): message is string => Boolean(message));
+
+      let statusMessageId: string | undefined;
+      for (const message of messages) {
+        const posted = await context.thread.post({ markdown: message });
+        statusMessageId ??= posted.id;
+      }
+      if (statusMessageId) {
+        context.state.pendingAuthMessageIds = {
+          ...pendingAuthorizationMessages,
+          [event.name]: statusMessageId,
+        };
+      }
+    },
     "action.result"(event, context) {
       const result = taskCancelResultSchema.safeParse(event.result);
       if (!result.success) return;
@@ -202,7 +280,7 @@ export const linqChannelConfig = {
       await postLinqReply(context.thread, markdown, delivery.files);
     },
   },
-  async onMessage(_context, message) {
+  async onMessage(context, message) {
     if (message.author.isBot) return null;
 
     const auth = defaultLinqAuth(message);
@@ -219,8 +297,17 @@ export const linqChannelConfig = {
     const scope = accessScopeForUser(principalId);
     const attributes =
       verifiedUserId && phoneNumber
-        ? { ...auth.attributes, phoneNumber, workspaceId: scope.workspaceId }
-        : { ...auth.attributes, workspaceId: scope.workspaceId };
+        ? {
+            ...auth.attributes,
+            linqThreadId: context.thread.id,
+            phoneNumber,
+            workspaceId: scope.workspaceId,
+          }
+        : {
+            ...auth.attributes,
+            linqThreadId: context.thread.id,
+            workspaceId: scope.workspaceId,
+          };
     return {
       auth: {
         ...auth,

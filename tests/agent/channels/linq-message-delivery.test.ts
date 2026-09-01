@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type * as Blob from "@vercel/blob";
 import type { AccessScope } from "@/lib/access-scope";
 import workerCancellationHook from "@/agent/hooks/worker-cancellation-delivery";
-import { linqChannelConfig } from "@/agent/channels/linq";
+import { linqChannelConfig } from "@/agent/channels/linq-v2";
 
 interface BrowserImage {
   bytes: Uint8Array;
@@ -64,6 +64,9 @@ vi.mock("@vercel/blob", async (importOriginal) => {
   };
 });
 const channelEvents = linqChannelConfig.events;
+const deliverInputRequested = channelEvents["input.requested"];
+const deliverApprovalSettled = channelEvents["approval.settled"];
+const deliverAuthorizationRequired = channelEvents["authorization.required"];
 const trackWorkerCancellation = channelEvents["action.result"];
 const deliverCompletedMessage = channelEvents["message.completed"];
 
@@ -80,6 +83,8 @@ interface LinqTestMessage {
 
 interface LinqTestState {
   acknowledgedLinqMessageId?: string;
+  pendingAuthMessageIds?: Record<string, string>;
+  pendingLinqInputRequestIds?: readonly string[];
   pendingToolCallMessage?: string | null;
   workerCancellations?: readonly {
     readonly sourceMessageId: string;
@@ -88,6 +93,85 @@ interface LinqTestState {
 }
 
 describe("Linq message delivery", () => {
+  it("renders a pending approval once as plain-text Linq replies", async () => {
+    const { context, post, state } = handlerContext();
+    const event = inputRequestedEvent();
+
+    await deliverInputRequested(event, context);
+    await deliverInputRequested(event, context);
+
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenNthCalledWith(1, {
+      markdown: "Approve tool call: google_workspace_write",
+    });
+    expect(post).toHaveBeenNthCalledWith(2, {
+      markdown: "Reply with one of: Approve, Cancel.",
+    });
+    expect(state.pendingLinqInputRequestIds).toEqual(["approval-1"]);
+  });
+
+  it("confirms a settled plain-text approval", async () => {
+    const state: LinqTestState = {
+      pendingLinqInputRequestIds: ["approval-1"],
+    };
+    const { context, post } = handlerContext("message-1", state);
+
+    await deliverApprovalSettled(
+      {
+        outcome: "approved",
+        requestId: "approval-1",
+        responderPrincipalId: "linq:user-1",
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      context
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      markdown: "Approved. Continuing...",
+    });
+    expect(state.pendingLinqInputRequestIds).toEqual([]);
+  });
+
+  it("sends authorization codes and URLs in separate messages", async () => {
+    const { context, post, state } = handlerContext();
+
+    await deliverAuthorizationRequired(
+      {
+        authorization: {
+          displayName: "Google",
+          instructions: "Sign in to continue.",
+          url: "https://connect.vercel.com/authorize/sca_example",
+          userCode: "ABCD-EFG",
+        },
+        description: "Authorization required for google_workspace",
+        name: "google_workspace",
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      context
+    );
+
+    expect(post).toHaveBeenCalledTimes(4);
+    expect(post).toHaveBeenNthCalledWith(1, {
+      markdown: "Authorization required for Google.",
+    });
+    expect(post).toHaveBeenNthCalledWith(2, {
+      markdown: "Sign in to continue.",
+    });
+    expect(post).toHaveBeenNthCalledWith(3, {
+      markdown: "Code: ABCD-EFG",
+    });
+    expect(post).toHaveBeenNthCalledWith(4, {
+      markdown: "https://connect.vercel.com/authorize/sca_example",
+    });
+    expect(state.pendingAuthMessageIds).toEqual({
+      google_workspace: "posted-message-1",
+    });
+  });
+
   it("posts final responses as native iMessage Markdown", async () => {
     const message = [
       "Still blocked. No order was submitted.",
@@ -413,12 +497,40 @@ function completedEvent(
   };
 }
 
+function inputRequestedEvent(): Parameters<
+  NonNullable<typeof deliverInputRequested>
+>[0] {
+  return {
+    requests: [
+      {
+        action: {
+          callId: "call-1",
+          input: { action: "send_email" },
+          kind: "tool-call",
+          toolName: "google_workspace_write",
+        },
+        display: "confirmation",
+        kind: "tool-approval",
+        options: [
+          { id: "approve", label: "Approve", style: "primary" },
+          { id: "cancel", label: "Cancel" },
+        ],
+        prompt: "Approve tool call: google_workspace_write",
+        requestId: "approval-1",
+      },
+    ],
+    sequence: 0,
+    stepIndex: 0,
+    turnId: "turn-1",
+  };
+}
+
 function handlerContext(
   currentMessageId = "message-1",
   state: LinqTestState = {}
 ) {
-  const post = vi.fn<(message: LinqTestMessage) => Promise<void>>();
-  post.mockResolvedValue();
+  const post = vi.fn<(message: LinqTestMessage) => Promise<{ id: string }>>();
+  post.mockResolvedValue({ id: "posted-message-1" });
   const addReaction = vi
     .fn<(threadId: string, messageId: string, emoji: string) => Promise<void>>()
     .mockResolvedValue(undefined);

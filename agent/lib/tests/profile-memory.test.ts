@@ -10,6 +10,7 @@ describe("profile memory", () => {
     expect(
       resolveProfileMemoryBackend({
         BLOB_READ_WRITE_TOKEN: "blob-token",
+        BLOB_STORE_ID: undefined,
         NODE_ENV: "production",
         VERCEL_ENV: undefined,
       })
@@ -17,17 +18,36 @@ describe("profile memory", () => {
     expect(
       resolveProfileMemoryBackend({
         BLOB_READ_WRITE_TOKEN: "blob-token",
+        BLOB_STORE_ID: "store_openinstinct",
         NODE_ENV: "production",
         VERCEL_ENV: "production",
       })
-    ).toEqual({ kind: "automatic" });
+    ).toEqual({
+      kind: "vercel-blob-oidc",
+      storeId: "store_openinstinct",
+    });
     expect(
       resolveProfileMemoryBackend({
         BLOB_READ_WRITE_TOKEN: "blob-token",
+        BLOB_STORE_ID: undefined,
         NODE_ENV: "development",
         VERCEL_ENV: undefined,
       })
     ).toEqual({ kind: "automatic" });
+  });
+
+  it("uses the explicit OIDC Blob backend for Vercel deployments", () => {
+    expect(
+      resolveProfileMemoryBackend({
+        BLOB_READ_WRITE_TOKEN: undefined,
+        BLOB_STORE_ID: "store_openinstinct",
+        NODE_ENV: "production",
+        VERCEL_ENV: "production",
+      })
+    ).toEqual({
+      kind: "vercel-blob-oidc",
+      storeId: "store_openinstinct",
+    });
   });
 
   it("shares the canonical workspace across verified authenticators", () => {

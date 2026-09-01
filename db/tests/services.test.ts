@@ -26,6 +26,8 @@ describe("database services", () => {
     await applyBrowserImageMigration(client);
     await applyBrowserTraceMigration(client);
     await applyBrowserTraceEventMigration(client);
+    await applyFollowUpMigration(client);
+    await applyLinqToolConfirmationMigration(client);
 
     const pgliteDatabase = drizzle(client, { schema });
     // SAFETY: PGlite implements the query-builder surface exercised by these services despite using a different Drizzle driver.
@@ -38,6 +40,8 @@ describe("database services", () => {
       browsers,
       browserTraces,
       chats,
+      followUps,
+      linqToolConfirmations,
       secrets,
       sessions,
       settings,
@@ -48,6 +52,8 @@ describe("database services", () => {
       import("@/db/services/browsers"),
       import("@/db/services/browser-traces"),
       import("@/db/services/chats"),
+      import("@/db/services/follow-ups"),
+      import("@/db/services/linq-tool-confirmations"),
       import("@/db/services/secrets"),
       import("@/db/services/sessions"),
       import("@/db/services/settings"),
@@ -347,6 +353,99 @@ describe("database services", () => {
     await settings.selectGatewayModel(alice, "openai/test");
     expect(await settings.getGatewayModel(alice)).toBe("openai/test");
     expect(await settings.getGatewayModel(bob)).toBe("openai/gpt-5.6-sol-fast");
+
+    const dueAt = new Date(Date.now() + 60_000);
+    const createdFollowUp = await followUps.createFollowUp(
+      {
+        auth: {
+          attributes: {
+            linqThreadId: "linq:chat-alice",
+            phoneNumber: "+12025550123",
+            workspaceId: alice.workspaceId,
+          },
+          authenticator: "linq-message",
+          issuer: "linq",
+          principalId: alice.userId,
+          principalType: "user",
+          subject: "alice-subject",
+        },
+        linqThreadId: "linq:chat-alice",
+        phoneNumber: "+12025550123",
+        scope: alice,
+      },
+      {
+        firstRunAt: dueAt.toISOString(),
+        prompt: "Remind me to call John.",
+        recurrence: "once",
+        timezone: "America/Chicago",
+      }
+    );
+    expect(createdFollowUp).toMatchObject({
+      enabled: true,
+      prompt: "Remind me to call John.",
+    });
+    expect(await followUps.listFollowUps(bob)).toEqual([]);
+    const claimed = await followUps.claimDueFollowUps({
+      leaseForMs: 300_000,
+      limit: 10,
+      now: new Date(dueAt.getTime() + 1_000),
+    });
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]).toMatchObject({
+      linqThreadId: "linq:chat-alice",
+      prompt: "Remind me to call John.",
+    });
+    if (!claimed[0]) throw new Error("Expected a claimed follow-up.");
+    await followUps.completeFollowUp(
+      claimed[0],
+      new Date(dueAt.getTime() + 2_000)
+    );
+    expect(await followUps.listFollowUps(alice)).toEqual([]);
+    expect(await followUps.listFollowUps(alice, true)).toEqual([
+      expect.objectContaining({ enabled: false, id: createdFollowUp?.id }),
+    ]);
+
+    const proposedEmail = {
+      action: "send_email",
+      body: "Hello",
+      subject: "Test",
+      to: ["friend@example.com"],
+    };
+    const confirmation = await linqToolConfirmations.createLinqToolConfirmation(
+      {
+        action: "send_email",
+        payloadJson: JSON.stringify(proposedEmail),
+        principalId: alice.userId,
+        sessionId: "session-imessage",
+      }
+    );
+    await expect(
+      linqToolConfirmations.consumeLinqToolConfirmation({
+        action: "send_email",
+        confirmationId: confirmation.confirmationId,
+        payloadJson: JSON.stringify({ ...proposedEmail, subject: "Changed" }),
+        principalId: alice.userId,
+        sessionId: "session-imessage",
+      })
+    ).rejects.toThrow(/does not match/u);
+    await expect(
+      linqToolConfirmations.consumeLinqToolConfirmation({
+        action: "send_email",
+        confirmationId: confirmation.confirmationId,
+        payloadJson: JSON.stringify(proposedEmail),
+        principalId: alice.userId,
+        sessionId: "session-imessage",
+      })
+    ).resolves.toBeUndefined();
+    await expect(
+      linqToolConfirmations.consumeLinqToolConfirmation({
+        action: "send_email",
+        confirmationId: confirmation.confirmationId,
+        payloadJson: JSON.stringify(proposedEmail),
+        principalId: alice.userId,
+        sessionId: "session-imessage",
+      })
+    ).rejects.toThrow(/already used/u);
   }, 15_000);
 });
 
@@ -383,6 +482,26 @@ async function applyBrowserTraceMigration(database: PGlite) {
 async function applyBrowserTraceEventMigration(database: PGlite) {
   const migration = await readFile(
     new URL("../migrations/0005_brave_kang.sql", import.meta.url),
+    "utf8"
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+}
+
+async function applyFollowUpMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0006_slow_mad_thinker.sql", import.meta.url),
+    "utf8"
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+}
+
+async function applyLinqToolConfirmationMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0007_bitter_virginia_dare.sql", import.meta.url),
     "utf8"
   );
   for (const statement of migration.split("--> statement-breakpoint")) {

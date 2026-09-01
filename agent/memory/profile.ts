@@ -13,7 +13,11 @@ const provider =
     ? fileMemory({
         backend: vercelBlob({ token: backend.token }),
       })
-    : fileMemory();
+    : backend.kind === "vercel-blob-oidc"
+      ? fileMemory({
+          backend: vercelBlob({ storeId: backend.storeId }),
+        })
+      : fileMemory();
 
 export default defineMemory({
   description: "Remember stable facts and preferences about the current user.",
