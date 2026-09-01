@@ -50,6 +50,20 @@
       "when": 1788198215119,
       "tag": "0006_illegal_tattoo",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788290866078,
+      "tag": "0007_handy_the_call",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788304891628,
+      "tag": "0008_wild_black_tom",
+      "breakpoints": true
     }
   ]
 }
