@@ -20,6 +20,7 @@ describe("database migrations", () => {
     await applyMigration(database, "0005_brave_kang.sql");
     await applyMigration(database, "0006_slow_mad_thinker.sql");
     await applyMigration(database, "0007_bitter_virginia_dare.sql");
+    await applyMigration(database, "0008_groovy_scream.sql");
     await applyMigration(database, "0000_fluffy_the_spike.sql");
     await applyMigration(database, "0001_better-auth.sql");
 
@@ -53,6 +54,8 @@ describe("database migrations", () => {
            'browser_trace_events',
            'chats',
            'encrypted_secrets',
+           'dropped_thread_findings',
+           'dropped_thread_monitors',
            'follow_ups',
            'linq_tool_confirmations',
            'user',
@@ -63,7 +66,7 @@ describe("database migrations", () => {
     );
     const pendingConstraints = await pendingConstraintCount(database);
 
-    expect(tables.rows[0]?.count).toBe(18);
+    expect(tables.rows[0]?.count).toBe(20);
     expect(pendingConstraints).toBe(0);
     await expect(
       database.query("SELECT id FROM vault_items WHERE id = 'contact-1'")

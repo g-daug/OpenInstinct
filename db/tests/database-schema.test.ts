@@ -11,6 +11,8 @@ import {
   browserTraceEvents,
   browserTraces,
   chats,
+  droppedThreadFindings,
+  droppedThreadMonitors,
   encryptedSecrets,
   followUps,
   linqToolConfirmations,
@@ -38,6 +40,8 @@ describe("database schema", () => {
         browserTraceDomains,
         browserTraceEvents,
         chats,
+        droppedThreadFindings,
+        droppedThreadMonitors,
         encryptedSecrets,
         followUps,
         linqToolConfirmations,
@@ -58,6 +62,8 @@ describe("database schema", () => {
       "browser_trace_domains",
       "browser_trace_events",
       "chats",
+      "dropped_thread_findings",
+      "dropped_thread_monitors",
       "encrypted_secrets",
       "follow_ups",
       "linq_tool_confirmations",
@@ -75,6 +81,7 @@ describe("database schema", () => {
       browserSessions,
       browserTraces,
       followUps,
+      droppedThreadMonitors,
     ]) {
       const foreignKeys = getTableConfig(table).foreignKeys;
       expect(foreignKeys.map((foreignKey) => foreignKey.getName())).toContain(

@@ -350,6 +350,106 @@ export const followUps = pgTable(
   ]
 );
 
+export const droppedThreadMonitors = pgTable(
+  "dropped_thread_monitors",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    createdByUserId: text("created_by_user_id").notNull(),
+    timezone: text("timezone").notNull(),
+    localHour: integer("local_hour").notNull(),
+    localMinute: integer("local_minute").notNull(),
+    lookbackDays: integer("lookback_days").notNull().default(14),
+    minimumAgeHours: integer("minimum_age_hours").notNull().default(48),
+    nextRunAt: text("next_run_at").notNull(),
+    linqThreadId: text("linq_thread_id").notNull(),
+    authenticator: text("authenticator").notNull(),
+    issuer: text("issuer"),
+    subject: text("subject"),
+    phoneNumber: text("phone_number"),
+    enabled: boolean("enabled").notNull().default(true),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    lastRunAt: text("last_run_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "dropped_thread_monitors_membership_fkey",
+      columns: [table.workspaceId, table.createdByUserId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+    }).onDelete("cascade"),
+    check(
+      "dropped_thread_monitors_local_hour_check",
+      sql`${table.localHour} >= 0 AND ${table.localHour} <= 23`
+    ),
+    check(
+      "dropped_thread_monitors_local_minute_check",
+      sql`${table.localMinute} >= 0 AND ${table.localMinute} <= 59`
+    ),
+    check(
+      "dropped_thread_monitors_lookback_days_check",
+      sql`${table.lookbackDays} >= 1 AND ${table.lookbackDays} <= 90`
+    ),
+    check(
+      "dropped_thread_monitors_minimum_age_hours_check",
+      sql`${table.minimumAgeHours} >= 1 AND ${table.minimumAgeHours} <= 720`
+    ),
+    uniqueIndex("dropped_thread_monitors_owner_uidx").on(
+      table.workspaceId,
+      table.createdByUserId
+    ),
+    index("dropped_thread_monitors_due_idx").on(
+      table.enabled,
+      table.nextRunAt,
+      table.leaseExpiresAt
+    ),
+  ]
+);
+
+export const droppedThreadFindings = pgTable(
+  "dropped_thread_findings",
+  {
+    id: text("id").primaryKey(),
+    monitorId: text("monitor_id").notNull(),
+    sourceThreadId: text("source_thread_id").notNull(),
+    state: text("state").notNull().default("open"),
+    firstDetectedAt: text("first_detected_at").notNull(),
+    lastDetectedAt: text("last_detected_at").notNull(),
+    lastNotifiedAt: text("last_notified_at"),
+    snoozedUntil: text("snoozed_until"),
+    dismissedAt: text("dismissed_at"),
+    resolvedAt: text("resolved_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "dropped_thread_findings_monitor_fkey",
+      columns: [table.monitorId],
+      foreignColumns: [droppedThreadMonitors.id],
+    }).onDelete("cascade"),
+    check(
+      "dropped_thread_findings_state_check",
+      sql`${table.state} IN ('open', 'snoozed', 'dismissed', 'resolved')`
+    ),
+    uniqueIndex("dropped_thread_findings_source_uidx").on(
+      table.monitorId,
+      table.sourceThreadId
+    ),
+    index("dropped_thread_findings_review_idx").on(
+      table.monitorId,
+      table.state,
+      table.snoozedUntil
+    ),
+  ]
+);
+
 export const linqToolConfirmations = pgTable(
   "linq_tool_confirmations",
   {

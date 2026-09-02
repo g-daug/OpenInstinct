@@ -28,6 +28,7 @@ describe("database services", () => {
     await applyBrowserTraceEventMigration(client);
     await applyFollowUpMigration(client);
     await applyLinqToolConfirmationMigration(client);
+    await applyDroppedThreadMonitorMigration(client);
 
     const pgliteDatabase = drizzle(client, { schema });
     // SAFETY: PGlite implements the query-builder surface exercised by these services despite using a different Drizzle driver.
@@ -502,6 +503,16 @@ async function applyFollowUpMigration(database: PGlite) {
 async function applyLinqToolConfirmationMigration(database: PGlite) {
   const migration = await readFile(
     new URL("../migrations/0007_bitter_virginia_dare.sql", import.meta.url),
+    "utf8"
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+}
+
+async function applyDroppedThreadMonitorMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0008_groovy_scream.sql", import.meta.url),
     "utf8"
   );
   for (const statement of migration.split("--> statement-breakpoint")) {
