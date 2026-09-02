@@ -53,6 +53,12 @@ describe("root and worker capability boundaries", () => {
       "do not merely describe the vault or claim credentials are saved"
     );
     expect(rootInstructions).toContain(
+      "Treat a previous browser or profile-lock result as historical"
+    );
+    expect(rootInstructions).toContain(
+      "Never predict the retry will fail or repeat the old blocker without a current tool result"
+    );
+    expect(rootInstructions).toContain(
       "distinguish automatic per-thread reply tracking from the daily dropped-email monitor"
     );
     expect(rootInstructions).toContain("do not ask for a daily schedule");
@@ -108,15 +114,25 @@ describe("root and worker capability boundaries", () => {
     expect(existsSync(`${workerRoot}/skills/browser-execution/SKILL.md`)).toBe(
       true
     );
-    expect(readFileSync(`${workerRoot}/instructions.md`, "utf8")).not.toContain(
-      "`inspect_autofill`"
+    const workerInstructions = readFileSync(
+      `${workerRoot}/instructions.md`,
+      "utf8"
     );
-    expect(readFileSync(`${workerRoot}/instructions.md`, "utf8")).toContain(
+    const browserSkill = readFileSync(
+      `${workerRoot}/skills/browser-execution/SKILL.md`,
+      "utf8"
+    );
+    expect(workerInstructions).not.toContain("`inspect_autofill`");
+    expect(workerInstructions).toContain(
       "native `final_output` tool exactly once"
     );
-    expect(readFileSync(`${workerRoot}/instructions.md`, "utf8")).toContain(
+    expect(workerInstructions).toContain(
       "Never use the browser for general web search"
     );
+    expect(workerInstructions).toContain(
+      "Do not reuse the earlier failure as the current result"
+    );
+    expect(browserSkill).toContain("never return the earlier lock from memory");
     expect(existsSync(`${workerRoot}/lib/browser-contract.ts`)).toBe(false);
     expect(existsSync(`${workerRoot}/lib/browser-runtime.ts`)).toBe(false);
     expect(existsSync(`${workerRoot}/lib/owned-browser.ts`)).toBe(true);
