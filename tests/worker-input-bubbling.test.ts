@@ -18,9 +18,12 @@ describe("worker input bubbling", () => {
     expect(instructions).toContain(
       "Ask the user directly in ordinary assistant text"
     );
-    expect(instructions).toContain("continue that worker with its `agentId`");
+    expect(instructions).toContain(
+      "continue the returned `worker_agent_id` with the transient answer"
+    );
     expect(instructions).toContain("returns a `Needs user input:` blocker");
-    expect(browserSkill).toContain("native `final_output` with `failure`");
+    expect(instructions).toContain("`browser_auth_resume` with `bind`");
+    expect(browserSkill).toContain("`manage_auth_checkpoint` with `pause`");
     expect(browserSkill).toContain("End the turn immediately");
   });
 });

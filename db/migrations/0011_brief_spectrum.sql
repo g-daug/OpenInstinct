@@ -1,0 +1,1 @@
+ALTER TABLE "browser_auth_checkpoints" ADD COLUMN "worker_agent_id" text;

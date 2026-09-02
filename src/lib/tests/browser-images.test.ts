@@ -99,5 +99,16 @@ describe("browser image contracts", () => {
         status: "success",
       }).success
     ).toBe(false);
+    expect(
+      taskCompletionSchema.safeParse({
+        blocker: {
+          checkpointId: "0d01e667-d128-4bb7-a248-1ae21db72f4f",
+          type: "browser_authentication",
+        },
+        images: [],
+        message: "Needs user input: send the requested code.",
+        status: "failure",
+      }).success
+    ).toBe(true);
   });
 });

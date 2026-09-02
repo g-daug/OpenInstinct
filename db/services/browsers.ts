@@ -33,6 +33,7 @@ export async function listWorkerBrowserSessions(
     .where(
       and(
         eq(browserSessions.workspaceId, scope.workspaceId),
+        eq(browserSessions.createdByUserId, scope.userId),
         eq(browserSessions.workerSessionId, workerSessionId)
       )
     )
@@ -46,7 +47,12 @@ export async function listBrowserSessions(scope: AccessScope) {
       sessionId: browserSessions.sessionId,
     })
     .from(browserSessions)
-    .where(eq(browserSessions.workspaceId, scope.workspaceId))
+    .where(
+      and(
+        eq(browserSessions.workspaceId, scope.workspaceId),
+        eq(browserSessions.createdByUserId, scope.userId)
+      )
+    )
     .orderBy(desc(browserSessions.createdAt));
 }
 
@@ -64,6 +70,7 @@ export async function readBrowserSession(
     .where(
       and(
         eq(browserSessions.workspaceId, scope.workspaceId),
+        eq(browserSessions.createdByUserId, scope.userId),
         eq(browserSessions.sessionId, sessionId)
       )
     )
@@ -80,6 +87,7 @@ export async function deleteBrowserSession(
     .where(
       and(
         eq(browserSessions.workspaceId, scope.workspaceId),
+        eq(browserSessions.createdByUserId, scope.userId),
         eq(browserSessions.sessionId, sessionId)
       )
     )
@@ -93,11 +101,11 @@ export async function withBrowserProfileWriteLock<T>(
 ) {
   return db.transaction(async (transaction) => {
     const result = await transaction.execute<{ acquired: boolean }>(
-      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${scope.workspaceId}, 0)) AS "acquired"`
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`${scope.workspaceId}\0${scope.userId}`}, 0)) AS "acquired"`
     );
     if (result.rows[0]?.acquired !== true) {
       throw new Error(
-        "Another browser profile update is starting for this workspace. Retry after it finishes."
+        "Another browser profile update is starting for this user. Retry after it finishes."
       );
     }
     return operation();

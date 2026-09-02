@@ -3,12 +3,18 @@ import { browserImageArtifactReferenceSchema } from "@/lib/browser-artifact";
 
 export const maximumWorkerCompletionImages = 4;
 
+const browserAuthenticationBlockerSchema = z.object({
+  checkpointId: z.uuid(),
+  type: z.literal("browser_authentication"),
+});
+
 export const taskCompletionSchema = z.object({
   images: z
     .array(browserImageArtifactReferenceSchema)
     .max(maximumWorkerCompletionImages),
   status: z.enum(["success", "failure"]),
   message: z.string().trim().min(1),
+  blocker: browserAuthenticationBlockerSchema.optional(),
 });
 
 const historicalTaskCompletionSchema = taskCompletionSchema.omit({

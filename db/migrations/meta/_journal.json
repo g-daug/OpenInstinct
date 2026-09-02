@@ -71,6 +71,20 @@
       "when": 1788370608445,
       "tag": "0009_fine_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788376829516,
+      "tag": "0010_workable_dagger",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788376935195,
+      "tag": "0011_brief_spectrum",
+      "breakpoints": true
     }
   ]
 }

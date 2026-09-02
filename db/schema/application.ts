@@ -141,6 +141,56 @@ export const browserSessions = pgTable(
   ]
 );
 
+export const browserAuthCheckpoints = pgTable(
+  "browser_auth_checkpoints",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    createdByUserId: text("created_by_user_id").notNull(),
+    rootSessionId: text("root_session_id").notNull(),
+    workerSessionId: text("worker_session_id").notNull(),
+    workerAgentId: text("worker_agent_id"),
+    browserSessionId: text("browser_session_id").notNull(),
+    origin: text("origin").notNull(),
+    challengeType: text("challenge_type").notNull(),
+    prompt: text("prompt").notNull(),
+    status: text("status").notNull().default("pending"),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "browser_auth_checkpoints_membership_fkey",
+      columns: [table.workspaceId, table.createdByUserId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+    }).onDelete("cascade"),
+    check(
+      "browser_auth_checkpoints_challenge_type_check",
+      sql`${table.challengeType} IN ('otp_sms', 'otp_email', 'totp', 'push', 'passkey', 'captcha', 'vault_login', 'approval', 'other')`
+    ),
+    check(
+      "browser_auth_checkpoints_status_check",
+      sql`${table.status} IN ('pending', 'resuming', 'completed', 'expired', 'cancelled', 'failed')`
+    ),
+    index("browser_auth_checkpoints_owner_status_idx").on(
+      table.workspaceId,
+      table.createdByUserId,
+      table.rootSessionId,
+      table.status,
+      table.updatedAt.desc().nullsFirst()
+    ),
+    index("browser_auth_checkpoints_worker_idx").on(
+      table.workspaceId,
+      table.createdByUserId,
+      table.workerSessionId
+    ),
+  ]
+);
+
 export const browserTraces = pgTable(
   "browser_traces",
   {

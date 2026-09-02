@@ -17,6 +17,7 @@ describe("root and worker capability boundaries", () => {
     expect(toolFiles(rootTools)).toEqual([
       "agent.ts",
       "ask_question.ts",
+      "browser_auth_resume.ts",
       "cancel_follow_up.ts",
       "create_follow_up.ts",
       "google_workspace_read.ts",
@@ -65,6 +66,7 @@ describe("root and worker capability boundaries", () => {
       "execute_playwright_code.ts",
       "fill_from_vault.ts",
       "list_vault.ts",
+      "manage_auth_checkpoint.ts",
       "manage_browsers.ts",
     ]);
     expect(existsSync(`${workerRoot}/tools/sendMessage.ts`)).toBe(false);
@@ -84,6 +86,7 @@ describe("root and worker capability boundaries", () => {
       "capture_browser_image",
       "computer_action",
       "execute_playwright_code",
+      "manage_auth_checkpoint",
       "manage_browsers",
     ]) {
       const source = readFileSync(`${workerTools}/${tool}.ts`, "utf8");

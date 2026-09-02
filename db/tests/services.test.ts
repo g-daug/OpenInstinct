@@ -29,6 +29,8 @@ describe("database services", () => {
     await applyFollowUpMigration(client);
     await applyLinqToolConfirmationMigration(client);
     await applyDroppedThreadMonitorMigration(client);
+    await applyBrowserAuthCheckpointMigration(client);
+    await applyBrowserAuthAgentMigration(client);
 
     const pgliteDatabase = drizzle(client, { schema });
     // SAFETY: PGlite implements the query-builder surface exercised by these services despite using a different Drizzle driver.
@@ -38,6 +40,7 @@ describe("database services", () => {
 
     const [
       browserImages,
+      browserAuthCheckpoints,
       browsers,
       browserTraces,
       chats,
@@ -50,6 +53,7 @@ describe("database services", () => {
       vault,
     ] = await Promise.all([
       import("@/db/services/browser-images"),
+      import("@/db/services/browser-auth-checkpoints"),
       import("@/db/services/browsers"),
       import("@/db/services/browser-traces"),
       import("@/db/services/chats"),
@@ -63,9 +67,11 @@ describe("database services", () => {
     ]);
     const alice = { userId: "alice", workspaceId: "workspace:alice" };
     const bob = { userId: "bob", workspaceId: "workspace:bob" };
+    const charlie = { userId: "charlie", workspaceId: "workspace:alice" };
 
     await scope.ensureScope(alice);
     await scope.ensureScope(bob);
+    await scope.ensureScope(charlie);
 
     const imageInput = {
       browserSessionId: "browser-alice",
@@ -223,6 +229,9 @@ describe("database services", () => {
     expect(
       await browsers.readBrowserSession(bob, "browser-alice")
     ).toBeUndefined();
+    expect(
+      await browsers.readBrowserSession(charlie, "browser-alice")
+    ).toBeUndefined();
     expect(await browsers.listBrowserSessions(alice)).toHaveLength(1);
     expect(
       await browsers.listWorkerBrowserSessions(alice, "worker-alice")
@@ -233,6 +242,56 @@ describe("database services", () => {
     expect(await browsers.deleteBrowserSession(bob, "browser-alice")).toBe(
       false
     );
+
+    const authCheckpoint =
+      await browserAuthCheckpoints.createBrowserAuthCheckpoint(alice, {
+        browserSessionId: "browser-alice",
+        challengeType: "otp_sms",
+        expiresAt: new Date(Date.now() + 60_000),
+        origin: "https://example.com",
+        prompt: "Send the code requested by example.com.",
+        rootSessionId: "session-alice",
+        workerSessionId: "worker-alice",
+      });
+    expect(
+      await browserAuthCheckpoints.readPendingBrowserAuthCheckpoint(
+        alice,
+        "session-alice"
+      )
+    ).toMatchObject({ id: authCheckpoint.id, status: "pending" });
+    expect(
+      await browserAuthCheckpoints.readPendingBrowserAuthCheckpoint(
+        bob,
+        "session-alice"
+      )
+    ).toBeUndefined();
+    expect(
+      await browserAuthCheckpoints.readPendingBrowserAuthCheckpoint(
+        charlie,
+        "session-alice"
+      )
+    ).toBeUndefined();
+    expect(
+      await browserAuthCheckpoints.bindBrowserAuthCheckpointAgent(
+        alice,
+        authCheckpoint.id,
+        "session-alice",
+        "worker-agent-alice"
+      )
+    ).toMatchObject({ workerAgentId: "worker-agent-alice" });
+    expect(
+      await browserAuthCheckpoints.markBrowserAuthCheckpointResuming(
+        alice,
+        authCheckpoint.id
+      )
+    ).toMatchObject({ status: "resuming" });
+    expect(
+      await browserAuthCheckpoints.finishBrowserAuthCheckpoint(
+        alice,
+        authCheckpoint.id,
+        "completed"
+      )
+    ).toMatchObject({ status: "completed" });
 
     const { serializeLoginVaultPayload } = await import("@/lib/vault");
     await browserTraces.beginBrowserTrace(alice, {
@@ -513,6 +572,26 @@ async function applyLinqToolConfirmationMigration(database: PGlite) {
 async function applyDroppedThreadMonitorMigration(database: PGlite) {
   const migration = await readFile(
     new URL("../migrations/0008_groovy_scream.sql", import.meta.url),
+    "utf8"
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+}
+
+async function applyBrowserAuthCheckpointMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0010_workable_dagger.sql", import.meta.url),
+    "utf8"
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+}
+
+async function applyBrowserAuthAgentMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0011_brief_spectrum.sql", import.meta.url),
     "utf8"
   );
   for (const statement of migration.split("--> statement-breakpoint")) {

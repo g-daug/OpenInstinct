@@ -53,10 +53,7 @@ const manageBrowsers = defineTool({
     switch (input.action) {
       case "create": {
         const create = async () => {
-          const profile = await ensureWorkspaceProfile(
-            scope.workspaceId,
-            signal
-          );
+          const profile = await ensureUserProfile(scope, signal);
           if (input.save_changes) {
             const activeWriter = await findActiveProfileWriter(
               profile.id,
@@ -250,18 +247,21 @@ function lifecycleResult(browser: KernelBrowser) {
   };
 }
 
-export function kernelProfileNameForWorkspace(workspaceId: string) {
+export function kernelProfileNameForScope(scope: {
+  readonly userId: string;
+  readonly workspaceId: string;
+}) {
   return `openinstinct-${createHash("sha256")
-    .update(`kernel-profile\0${workspaceId}`)
+    .update(`kernel-profile\0${scope.workspaceId}\0${scope.userId}`)
     .digest("hex")
     .slice(0, 40)}`;
 }
 
-async function ensureWorkspaceProfile(
-  workspaceId: string,
+async function ensureUserProfile(
+  scope: { readonly userId: string; readonly workspaceId: string },
   signal?: AbortSignal
 ) {
-  const name = kernelProfileNameForWorkspace(workspaceId);
+  const name = kernelProfileNameForScope(scope);
   try {
     return await kernel.profiles.retrieve(name, { signal });
   } catch (error) {

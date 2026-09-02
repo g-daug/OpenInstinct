@@ -15,7 +15,7 @@ import type { harvestBrowserTraceDomains } from "@/agent/subagents/worker/lib/tr
 import { kernel } from "@/lib/kernel";
 import { toolContextFor } from "@/tests/helpers/tool-context";
 import manageBrowsers, {
-  kernelProfileNameForWorkspace,
+  kernelProfileNameForScope,
 } from "@/agent/subagents/worker/tools/manage_browsers";
 
 const serviceMocks = vi.hoisted(() => ({
@@ -239,15 +239,18 @@ describe("Kernel browser contract", () => {
     );
   });
 
-  it("derives opaque, stable, workspace-specific profile names", () => {
-    const workspace = "personal:+15555550123";
-    const profileName = kernelProfileNameForWorkspace(workspace);
+  it("derives opaque, stable, user-specific profile names", () => {
+    const scope = {
+      userId: "+15555550123",
+      workspaceId: "shared-workspace",
+    };
+    const profileName = kernelProfileNameForScope(scope);
 
-    expect(profileName).toBe(kernelProfileNameForWorkspace(workspace));
+    expect(profileName).toBe(kernelProfileNameForScope(scope));
     expect(profileName).toMatch(/^openinstinct-[a-f0-9]{40}$/);
     expect(profileName).not.toContain("15555550123");
     expect(profileName).not.toBe(
-      kernelProfileNameForWorkspace("personal:+15555550124")
+      kernelProfileNameForScope({ ...scope, userId: "+15555550124" })
     );
   });
 });
