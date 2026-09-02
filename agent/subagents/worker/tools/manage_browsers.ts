@@ -8,10 +8,12 @@ import type {
 } from "@onkernel/sdk/resources/browsers";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { readActiveBrowserAuthCheckpointForBrowserSession } from "@/db/services/browser-auth-checkpoints";
 import {
   createBrowserSession,
   deleteBrowserSession,
   listBrowserSessions,
+  readBrowserSession,
   withBrowserProfileWriteLock,
 } from "@/db/services/browsers";
 import { recordBrowserTraceDomains } from "@/db/services/browser-traces";
@@ -24,6 +26,7 @@ import {
 } from "@/agent/subagents/worker/lib/trace/domains";
 
 const browserTimeoutFloorSeconds = 15 * 60;
+const staleProfileWriterAgeMs = 10 * 60 * 1000;
 const profileLeaseRetryDelaysMs = [100, 250, 500, 1000, 2000, 4000];
 
 const inputSchema = z.object({
@@ -62,9 +65,16 @@ const manageBrowsers = defineTool({
               signal
             );
             if (activeWriter) {
-              throw new Error(
-                `Browser session ${activeWriter.session_id} is already saving login state for this workspace. Retry after it finishes.`
+              const cleared = await clearStaleActiveProfileWriter(
+                scope,
+                activeWriter,
+                signal
               );
+              if (!cleared) {
+                throw new Error(
+                  `Browser session ${activeWriter.session_id} is already saving login state for this workspace. Retry after it finishes.`
+                );
+              }
             }
           }
           const browser = await createBrowserWithProfileLeaseRecovery(
@@ -177,6 +187,43 @@ export default manageBrowsers;
 function requireSessionId(sessionId: string | undefined) {
   if (!sessionId) throw new Error("A browser session ID is required.");
   return sessionId;
+}
+
+async function clearStaleActiveProfileWriter(
+  scope: Awaited<ReturnType<typeof requireWorkerScope>>,
+  browser: NonNullable<Awaited<ReturnType<typeof findActiveProfileWriter>>>,
+  signal?: AbortSignal
+) {
+  const createdAt = Date.parse(browser.created_at);
+  if (
+    !Number.isFinite(createdAt) ||
+    Date.now() - createdAt < staleProfileWriterAgeMs
+  ) {
+    return false;
+  }
+
+  const checkpoint = await readActiveBrowserAuthCheckpointForBrowserSession(
+    scope,
+    browser.session_id
+  );
+  if (checkpoint) return false;
+
+  const record = await readBrowserSession(scope, browser.session_id);
+  if (record?.workerSessionId) {
+    await harvestBrowserTraceDomains(
+      scope,
+      record.workerSessionId,
+      { createdAt: record.createdAt, sessionId: record.sessionId },
+      signal
+    ).catch(() => undefined);
+  }
+  await kernel.browsers
+    .deleteByID(browser.session_id, { signal })
+    .catch((cause: unknown) => {
+      if (!isNotFoundError(cause)) throw cause;
+    });
+  await deleteBrowserSession(scope, browser.session_id);
+  return true;
 }
 
 async function createBrowserWithProfileLeaseRecovery(

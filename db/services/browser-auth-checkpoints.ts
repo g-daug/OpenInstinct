@@ -106,6 +106,27 @@ export async function readPendingBrowserAuthCheckpoint(
   return checkpoint;
 }
 
+export async function readActiveBrowserAuthCheckpointForBrowserSession(
+  scope: AccessScope,
+  browserSessionId: string
+) {
+  await expireBrowserAuthCheckpoints(scope);
+  const [checkpoint] = await db
+    .select({ id: browserAuthCheckpoints.id })
+    .from(browserAuthCheckpoints)
+    .where(
+      and(
+        eq(browserAuthCheckpoints.workspaceId, scope.workspaceId),
+        eq(browserAuthCheckpoints.createdByUserId, scope.userId),
+        eq(browserAuthCheckpoints.browserSessionId, browserSessionId),
+        inArray(browserAuthCheckpoints.status, [...activeStatuses])
+      )
+    )
+    .orderBy(desc(browserAuthCheckpoints.updatedAt))
+    .limit(1);
+  return checkpoint;
+}
+
 export async function markBrowserAuthCheckpointResuming(
   scope: AccessScope,
   checkpointId: string

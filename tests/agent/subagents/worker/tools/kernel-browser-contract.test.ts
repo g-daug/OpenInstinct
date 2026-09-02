@@ -2,10 +2,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ConflictError } from "@onkernel/sdk";
+import type { readActiveBrowserAuthCheckpointForBrowserSession } from "@/db/services/browser-auth-checkpoints";
 import type {
   createBrowserSession,
   deleteBrowserSession,
   listBrowserSessions,
+  readBrowserSession,
   withBrowserProfileWriteLock,
 } from "@/db/services/browsers";
 import type { recordBrowserTraceDomains } from "@/db/services/browser-traces";
@@ -24,16 +26,25 @@ const serviceMocks = vi.hoisted(() => ({
   deleteBrowserSession: vi.fn<typeof deleteBrowserSession>(),
   harvestBrowserTraceDomains: vi.fn<typeof harvestBrowserTraceDomains>(),
   listBrowserSessions: vi.fn<typeof listBrowserSessions>(),
+  readActiveBrowserAuthCheckpointForBrowserSession:
+    vi.fn<typeof readActiveBrowserAuthCheckpointForBrowserSession>(),
+  readBrowserSession: vi.fn<typeof readBrowserSession>(),
   recordBrowserTraceDomains: vi.fn<typeof recordBrowserTraceDomains>(),
   requireOwnedBrowserSession: vi.fn<typeof requireOwnedBrowserSession>(),
   requireWorkerScope: vi.fn<typeof requireWorkerScope>(),
   withBrowserProfileWriteLock: vi.fn<typeof withBrowserProfileWriteLock>(),
 }));
 
+vi.mock("@/db/services/browser-auth-checkpoints", () => ({
+  readActiveBrowserAuthCheckpointForBrowserSession:
+    serviceMocks.readActiveBrowserAuthCheckpointForBrowserSession,
+}));
+
 vi.mock("@/db/services/browsers", () => ({
   createBrowserSession: serviceMocks.createBrowserSession,
   deleteBrowserSession: serviceMocks.deleteBrowserSession,
   listBrowserSessions: serviceMocks.listBrowserSessions,
+  readBrowserSession: serviceMocks.readBrowserSession,
   withBrowserProfileWriteLock: serviceMocks.withBrowserProfileWriteLock,
 }));
 vi.mock("@/db/services/browser-traces", () => ({
@@ -63,6 +74,9 @@ const mocks = {
   listBrowserSessions: serviceMocks.listBrowserSessions,
   listKernelBrowsers: vi.spyOn(kernel.browsers, "list"),
   readBrowserSession: serviceMocks.requireOwnedBrowserSession,
+  readStoredBrowserSession: serviceMocks.readBrowserSession,
+  readActiveBrowserAuthCheckpointForBrowserSession:
+    serviceMocks.readActiveBrowserAuthCheckpointForBrowserSession,
   recordBrowserTraceDomains: serviceMocks.recordBrowserTraceDomains,
   retrieveBrowser: vi.spyOn(kernel.browsers, "retrieve"),
   retrieveProfile: vi.spyOn(kernel.profiles, "retrieve"),
@@ -115,6 +129,10 @@ beforeEach(() => {
   mocks.deleteBrowserSession.mockResolvedValue(true);
   mocks.harvestBrowserTraceDomains.mockResolvedValue();
   mocks.listBrowserSessions.mockResolvedValue([]);
+  mocks.readActiveBrowserAuthCheckpointForBrowserSession.mockResolvedValue(
+    undefined
+  );
+  mocks.readStoredBrowserSession.mockResolvedValue(undefined);
   mocks.readBrowserSession.mockResolvedValue({
     createdAt: "2026-08-27T00:00:00.000Z",
     sessionId: "browser-1",
@@ -229,6 +247,66 @@ describe("Kernel browser contract", () => {
     ).rejects.toThrow(/browser-active.*saving login state/i);
     expect(mocks.withBrowserProfileWriteLock).toHaveBeenCalledOnce();
     expect(mocks.createBrowser).not.toHaveBeenCalled();
+  });
+
+  it("clears an old profile writer that has no active authentication checkpoint", async () => {
+    const staleCreatedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    mocks.listKernelBrowsers.mockReturnValue(
+      kernelBrowserPage([
+        {
+          created_at: staleCreatedAt,
+          profile: { id: "profile-1" },
+          profile_save_changes: true,
+          session_id: "browser-stale",
+        },
+      ])
+    );
+    mocks.readStoredBrowserSession.mockResolvedValue({
+      createdAt: staleCreatedAt,
+      sessionId: "browser-stale",
+      workerSessionId: "worker-stale",
+    });
+
+    const result = await manageBrowsers.execute(
+      { action: "create", save_changes: true },
+      workerContext
+    );
+
+    expect(result).toMatchObject({
+      browser: { session_id: "browser-1", status: "active" },
+    });
+    expect(mocks.deleteBrowser).toHaveBeenCalledExactlyOnceWith(
+      "browser-stale",
+      { signal: workerContext.abortSignal }
+    );
+    expect(mocks.deleteBrowserSession).toHaveBeenCalledExactlyOnceWith(
+      { userId: "user-1", workspaceId: "workspace-1" },
+      "browser-stale"
+    );
+  });
+
+  it("preserves an old profile writer with an active authentication checkpoint", async () => {
+    mocks.listKernelBrowsers.mockReturnValue(
+      kernelBrowserPage([
+        {
+          created_at: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
+          profile: { id: "profile-1" },
+          profile_save_changes: true,
+          session_id: "browser-paused",
+        },
+      ])
+    );
+    mocks.readActiveBrowserAuthCheckpointForBrowserSession.mockResolvedValue({
+      id: "checkpoint-1",
+    });
+
+    await expect(
+      manageBrowsers.execute(
+        { action: "create", save_changes: true },
+        workerContext
+      )
+    ).rejects.toThrow(/browser-paused.*saving login state/i);
+    expect(mocks.deleteBrowser).not.toHaveBeenCalled();
   });
 
   it("waits for an invisible profile write lease to finish", async () => {
