@@ -52,6 +52,41 @@ export function nextFollowUpRun({
   throw new Error("Unable to calculate the next follow-up occurrence.");
 }
 
+export function nextDailyRunAt({
+  after,
+  hour,
+  minute,
+  timezone,
+}: {
+  readonly after: Date;
+  readonly hour: number;
+  readonly minute: number;
+  readonly timezone: string;
+}) {
+  assertTimeZone(timezone);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    throw new Error("The local hour must be between 0 and 23.");
+  }
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+    throw new Error("The local minute must be between 0 and 59.");
+  }
+
+  const localAfter = zonedDateTime(after, timezone);
+  let localCandidate: LocalDateTime = {
+    ...localAfter,
+    hour,
+    minute,
+    second: 0,
+  };
+  let candidate = localDateTimeToInstant(localCandidate, timezone);
+  if (candidate.getTime() <= after.getTime()) {
+    localCandidate = addLocalDays(localCandidate, 1);
+    candidate = localDateTimeToInstant(localCandidate, timezone);
+  }
+
+  return candidate.toISOString();
+}
+
 function addLocalDays(value: LocalDateTime, days: number): LocalDateTime {
   const date = new Date(
     Date.UTC(
