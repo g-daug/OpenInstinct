@@ -52,6 +52,13 @@ describe("root and worker capability boundaries", () => {
     expect(rootInstructions).toContain(
       "do not merely describe the vault or claim credentials are saved"
     );
+    expect(rootInstructions).toContain(
+      "distinguish automatic per-thread reply tracking from the daily dropped-email monitor"
+    );
+    expect(rootInstructions).toContain("do not ask for a daily schedule");
+    expect(rootInstructions).toContain(
+      "emails they sent outside this assistant"
+    );
   });
 
   it("keeps durable memory scoped to the authenticated root user", () => {
