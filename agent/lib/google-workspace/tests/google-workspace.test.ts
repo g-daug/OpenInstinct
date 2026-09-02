@@ -4,6 +4,7 @@ import { googleWorkspaceAuthOptions } from "@/agent/lib/google-workspace/client"
 import {
   findReplyAfterSentMessage,
   gmailUpdateLabels,
+  replyExcerpt,
 } from "@/agent/lib/google-workspace/gmail";
 import {
   googleWorkspaceWriteApproval,
@@ -90,6 +91,7 @@ describe("Google Workspace", () => {
       )
     ).toEqual({
       date: "Wed, 2 Sep 2026 10:02:00 -0500",
+      excerpt: "Yes, dinner works for me.",
       from: "Gleidson <gleidson@example.com>",
       messageId: "reply-1",
       subject: "Re: Dinner tonight",
@@ -102,6 +104,18 @@ describe("Google Workspace", () => {
       )
     ).toBeUndefined();
   });
+
+  it("creates a bounded excerpt without quoted reply history", () => {
+    expect(
+      replyExcerpt(
+        "Yes, dinner works for me.\n\nOn Wed, Sep 2, 2026, Lisa wrote:\n> Are you free?"
+      )
+    ).toBe("Yes, dinner works for me.");
+    expect(replyExcerpt("abcdef", 5)).toBe("abcd…");
+    expect(replyExcerpt("> quoted text only")).toBe(
+      "Reply text was unavailable."
+    );
+  });
 });
 
 function gmailMessage(
@@ -109,17 +123,20 @@ function gmailMessage(
   labels: string[],
   internalDate: string,
   headers: {
+    readonly body?: string;
     readonly date?: string;
     readonly from?: string;
     readonly subject?: string;
   } = {}
 ) {
   return {
+    body: headers.body ?? "Yes, dinner works for me.",
     date: headers.date ?? null,
     from: headers.from ?? null,
     id,
     internalDate,
     labels,
+    snippet: headers.body ?? "Yes, dinner works for me.",
     subject: headers.subject ?? null,
   };
 }

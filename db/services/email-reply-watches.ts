@@ -24,6 +24,7 @@ export interface ClaimedEmailReplyWatch {
   readonly id: string;
   readonly leaseToken: string;
   readonly linqThreadId: string;
+  readonly phoneNumber?: string;
   readonly sentAt: string;
   readonly sentMessageId: string;
 }
@@ -258,7 +259,7 @@ function claimedWatch(
   if (row.issuer) Object.assign(auth, { issuer: row.issuer });
   if (row.subject) Object.assign(auth, { subject: row.subject });
 
-  return {
+  const claimed = {
     auth,
     createdByUserId: row.createdByUserId,
     emailSubject: row.emailSubject,
@@ -269,4 +270,6 @@ function claimedWatch(
     sentAt: row.sentAt,
     sentMessageId: row.sentMessageId,
   };
+  if (row.phoneNumber) Object.assign(claimed, { phoneNumber: row.phoneNumber });
+  return claimed;
 }

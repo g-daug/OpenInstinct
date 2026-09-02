@@ -87,15 +87,11 @@ export async function readGmailThreadForUser(userId: string, threadId: string) {
   authClient.setCredentials({ access_token: token });
   const client = gmail({ auth: authClient, version: "v1" });
   const { data: thread } = await client.users.threads.get({
-    format: "metadata",
+    format: "full",
     id: threadId,
-    metadataHeaders: ["From", "To", "Subject", "Date", "Message-ID"],
     userId: "me",
   });
-  return {
-    id: thread.id ?? threadId,
-    messages: (thread.messages ?? []).slice(-20).map(minimizeMessage),
-  };
+  return minimizeThread(thread, threadId);
 }
 
 export async function updateGmail(
@@ -167,10 +163,12 @@ export function findReplyAfterSentMessage(
   thread: {
     readonly messages: readonly {
       readonly date: string | null;
+      readonly body: string;
       readonly from: string | null;
       readonly id: string | null;
       readonly internalDate: string | null;
       readonly labels: readonly string[];
+      readonly snippet: string;
       readonly subject: string | null;
     }[];
   },
@@ -195,11 +193,29 @@ export function findReplyAfterSentMessage(
   return reply?.id
     ? {
         date: reply.date,
+        excerpt: replyExcerpt(reply.body || reply.snippet),
         from: reply.from,
         messageId: reply.id,
         subject: reply.subject,
       }
     : undefined;
+}
+
+export function replyExcerpt(value: string, maxLength = 500) {
+  const unquoted = value
+    .replace(/\r\n?/gu, "\n")
+    .split(
+      /\n(?:On .+ wrote:|From:\s.+|-----Original Message-----)(?:\n|$)/iu,
+      1
+    )[0]
+    ?.split("\n")
+    .filter((line) => !/^\s*>/u.test(line))
+    .join(" ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!unquoted) return "Reply text was unavailable.";
+  if (unquoted.length <= maxLength) return unquoted;
+  return `${unquoted.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
 export function gmailUpdateLabels(action: GmailUpdateAction) {
