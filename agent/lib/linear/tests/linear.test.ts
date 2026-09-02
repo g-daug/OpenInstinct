@@ -29,6 +29,7 @@ describe("Linear", () => {
       type: "user",
     });
     expect(linearAuthOptions.tokenParams).toEqual({ scopes: ["read"] });
+    expect(linearAuthOptions.connector).toBe("linear/open");
     expect(linearAuthOptions.validate).toBe(true);
   });
 

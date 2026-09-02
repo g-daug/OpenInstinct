@@ -38,7 +38,7 @@ describe("environment", () => {
     const { env } = await import("@/env");
 
     expect(env.GOOGLE_CONNECTOR_UID).toBe("google/open-instinct");
-    expect(env.LINEAR_CONNECTOR_UID).toBe("linear/open-instinct");
+    expect(env.LINEAR_CONNECTOR_UID).toBe("linear/open");
     expect(env.LINQ_CONNECTOR).toBeUndefined();
     expect(env.LINQ_PHONE_NUMBER).toBeUndefined();
   });
