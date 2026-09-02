@@ -24,6 +24,7 @@ export interface ClaimedEmailReplyWatch {
   readonly id: string;
   readonly leaseToken: string;
   readonly linqThreadId: string;
+  readonly lastError: null | string;
   readonly phoneNumber?: string;
   readonly sentAt: string;
   readonly sentMessageId: string;
@@ -267,6 +268,7 @@ function claimedWatch(
     id: row.id,
     leaseToken,
     linqThreadId: row.linqThreadId,
+    lastError: row.lastError,
     sentAt: row.sentAt,
     sentMessageId: row.sentMessageId,
   };

@@ -1,4 +1,9 @@
-import { defineSchedule } from "eve/schedules";
+import {
+  NoValidTokenError,
+  startAuthorization,
+  UserAuthorizationRequiredError,
+} from "@vercel/connect";
+import { defineSchedule, type ScheduleToFn } from "eve/schedules";
 import linq from "../channels/linq-v2";
 import { sendLinqText } from "@/auth/linq";
 import {
@@ -12,6 +17,10 @@ import {
   releaseEmailReplyWatch,
 } from "@/db/services/email-reply-watches";
 import { env } from "@/env";
+import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
+
+const GOOGLE_REAUTH_NOTICE_SENT =
+  "Google authorization required; reconnect notice sent.";
 
 export default defineSchedule({
   cron: "* * * * *",
@@ -71,10 +80,17 @@ export default defineSchedule({
               }
               await completeEmailReplyWatchPoll(job, new Date());
             } catch (error) {
-              await releaseEmailReplyWatch(
-                job,
-                error instanceof Error ? error : new Error(String(error))
-              );
+              const normalizedError =
+                error instanceof Error ? error : new Error(String(error));
+              if (isGoogleReauthorizationError(normalizedError)) {
+                await recoverGoogleAuthorization(job, to);
+                return;
+              }
+              console.warn("[email-replies] watch check failed", {
+                error: normalizedError.message,
+                watchId: job.id,
+              });
+              await releaseEmailReplyWatch(job, normalizedError);
             }
           })
         );
@@ -82,3 +98,60 @@ export default defineSchedule({
     );
   },
 });
+
+function isGoogleReauthorizationError(error: Error) {
+  return (
+    error instanceof UserAuthorizationRequiredError ||
+    error instanceof NoValidTokenError
+  );
+}
+
+async function recoverGoogleAuthorization(
+  job: Parameters<typeof releaseEmailReplyWatch>[0],
+  to: ScheduleToFn
+) {
+  if (job.lastError === GOOGLE_REAUTH_NOTICE_SENT) {
+    await releaseEmailReplyWatch(job, new Error(GOOGLE_REAUTH_NOTICE_SENT));
+    return;
+  }
+
+  try {
+    const authorization = await startAuthorization(
+      env.GOOGLE_CONNECTOR_UID,
+      googleWorkspaceTokenParams(job.createdByUserId),
+      { deviceCode: true, prompt: "consent" }
+    );
+    const reconnectDetails = [
+      "Google access expired while I was checking for an email reply. Reconnect Google and I’ll continue monitoring automatically.",
+      authorization.deviceCode
+        ? `Code: ${authorization.deviceCode}`
+        : undefined,
+      authorization.url,
+    ].filter((value): value is string => Boolean(value));
+    await to(linq, {
+      adapterName: "linq",
+      threadId: job.linqThreadId,
+    }).send(
+      [
+        "Send the Google reconnection notice below exactly once. Do not call tools or add details.",
+        reconnectDetails.join("\n\n"),
+      ].join("\n\n"),
+      { auth: job.auth }
+    );
+    await releaseEmailReplyWatch(job, new Error(GOOGLE_REAUTH_NOTICE_SENT));
+  } catch (recoveryError) {
+    console.warn("[email-replies] Google reconnection delivery failed", {
+      error:
+        recoveryError instanceof Error
+          ? recoveryError.message
+          : String(recoveryError),
+      watchId: job.id,
+    });
+    await releaseEmailReplyWatch(
+      job,
+      recoveryError instanceof Error
+        ? recoveryError
+        : new Error(String(recoveryError))
+    );
+  }
+}
