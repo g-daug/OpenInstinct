@@ -31,12 +31,14 @@ describe("environment", () => {
     expect(env).toMatchObject(requiredEnvironment);
   });
 
-  it("provides the Google connector default without enabling Linq", async () => {
+  it("provides service connector defaults without enabling Linq", async () => {
     vi.stubEnv("GOOGLE_CONNECTOR_UID", "");
+    vi.stubEnv("LINEAR_CONNECTOR_UID", "");
 
     const { env } = await import("@/env");
 
     expect(env.GOOGLE_CONNECTOR_UID).toBe("google/open-instinct");
+    expect(env.LINEAR_CONNECTOR_UID).toBe("linear/open-instinct");
     expect(env.LINQ_CONNECTOR).toBeUndefined();
     expect(env.LINQ_PHONE_NUMBER).toBeUndefined();
   });
@@ -77,12 +79,14 @@ describe("environment", () => {
 
   it("accepts connector overrides", async () => {
     vi.stubEnv("GOOGLE_CONNECTOR_UID", "google/custom");
+    vi.stubEnv("LINEAR_CONNECTOR_UID", "linear/custom");
     vi.stubEnv("LINQ_CONNECTOR", "linq/custom");
     vi.stubEnv("LINQ_PHONE_NUMBER", "+12025550123");
 
     const { env } = await import("@/env");
 
     expect(env.GOOGLE_CONNECTOR_UID).toBe("google/custom");
+    expect(env.LINEAR_CONNECTOR_UID).toBe("linear/custom");
     expect(env.LINQ_CONNECTOR).toBe("linq/custom");
     expect(env.LINQ_PHONE_NUMBER).toBe("+12025550123");
   });

@@ -21,6 +21,7 @@ describe("root and worker capability boundaries", () => {
       "create_follow_up.ts",
       "google_workspace_read.ts",
       "google_workspace_write.ts",
+      "linear_read.ts",
       "list_follow_ups.ts",
       "manage_dropped_thread_monitor.ts",
       "request_vault_import.ts",

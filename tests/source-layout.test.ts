@@ -30,6 +30,7 @@ const expectedLibFiles = [
   "google-workspace.ts",
   "installation-secrets.ts",
   "kernel.ts",
+  "linear.ts",
   "request-scope.ts",
   "same-origin.ts",
   "utils.ts",
