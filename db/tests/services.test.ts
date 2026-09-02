@@ -31,6 +31,7 @@ describe("database services", () => {
     await applyDroppedThreadMonitorMigration(client);
     await applyBrowserAuthCheckpointMigration(client);
     await applyBrowserAuthAgentMigration(client);
+    await applyVaultHardeningMigration(client);
 
     const pgliteDatabase = drizzle(client, { schema });
     // SAFETY: PGlite implements the query-builder surface exercised by these services despite using a different Drizzle driver.
@@ -592,6 +593,16 @@ async function applyBrowserAuthCheckpointMigration(database: PGlite) {
 async function applyBrowserAuthAgentMigration(database: PGlite) {
   const migration = await readFile(
     new URL("../migrations/0011_brief_spectrum.sql", import.meta.url),
+    "utf8"
+  );
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+}
+
+async function applyVaultHardeningMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0012_regular_blur.sql", import.meta.url),
     "utf8"
   );
   for (const statement of migration.split("--> statement-breakpoint")) {

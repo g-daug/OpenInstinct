@@ -24,6 +24,7 @@ describe("database migrations", () => {
     await applyMigration(database, "0009_fine_magik.sql");
     await applyMigration(database, "0010_workable_dagger.sql");
     await applyMigration(database, "0011_brief_spectrum.sql");
+    await applyMigration(database, "0012_regular_blur.sql");
     await applyMigration(database, "0000_fluffy_the_spike.sql");
     await applyMigration(database, "0001_better-auth.sql");
 
@@ -48,6 +49,8 @@ describe("database migrations", () => {
            'workspaces',
            'workspace_memberships',
            'vault_items',
+           'vault_encryption_keys',
+           'vault_audit_events',
            'settings',
            'agent_sessions',
            'browser_image_artifacts',
@@ -71,7 +74,7 @@ describe("database migrations", () => {
     );
     const pendingConstraints = await pendingConstraintCount(database);
 
-    expect(tables.rows[0]?.count).toBe(22);
+    expect(tables.rows[0]?.count).toBe(24);
     expect(pendingConstraints).toBe(0);
     await expect(
       database.query("SELECT id FROM vault_items WHERE id = 'contact-1'")

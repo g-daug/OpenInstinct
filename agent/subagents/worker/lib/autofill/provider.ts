@@ -178,7 +178,10 @@ export const vaultAutofillProvider: AutofillVaultAdapter = {
         if (!codec.isAvailableAtOrigin) {
           return hasVaultSecret(scope, item.id);
         }
-        const secret = await readVaultSecret(scope, item.id);
+        const secret = await readVaultSecret(scope, item.id, {
+          origin,
+          purpose: "availability_check",
+        });
         return (
           secret !== undefined && codec.isAvailableAtOrigin(secret, origin)
         );
@@ -213,7 +216,10 @@ export const vaultAutofillProvider: AutofillVaultAdapter = {
       );
     }
 
-    const secret = await readVaultSecret(scope, item.id);
+    const secret = await readVaultSecret(scope, item.id, {
+      origin: target.origin,
+      purpose: "autofill",
+    });
     if (!secret) throw new Error("The selected vault item has no secret.");
 
     const values = codec.claims(item, secret, target.origin);

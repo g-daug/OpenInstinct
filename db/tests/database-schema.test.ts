@@ -21,6 +21,8 @@ import {
   session,
   settings,
   user,
+  vaultAuditEvents,
+  vaultEncryptionKeys,
   vaultItems,
   verification,
   workspaceMemberships,
@@ -34,6 +36,8 @@ describe("database schema", () => {
         workspaces,
         workspaceMemberships,
         vaultItems,
+        vaultEncryptionKeys,
+        vaultAuditEvents,
         settings,
         agentSessions,
         browserImageArtifacts,
@@ -58,6 +62,8 @@ describe("database schema", () => {
       "workspaces",
       "workspace_memberships",
       "vault_items",
+      "vault_encryption_keys",
+      "vault_audit_events",
       "settings",
       "agent_sessions",
       "browser_image_artifacts",
@@ -114,6 +120,8 @@ describe("database schema", () => {
     for (const table of [
       workspaceMemberships,
       vaultItems,
+      vaultEncryptionKeys,
+      vaultAuditEvents,
       settings,
       chats,
       encryptedSecrets,
@@ -203,6 +211,7 @@ describe("migration deployment policy", () => {
         "secrets",
         "sessions",
         "settings",
+        "vault-keys",
         "vault",
       ].map(
         async (name) =>

@@ -67,6 +67,61 @@ export const vaultItems = pgTable(
   ]
 );
 
+export const vaultEncryptionKeys = pgTable(
+  "vault_encryption_keys",
+  {
+    workspaceId: text("workspace_id").notNull(),
+    version: integer("version").notNull(),
+    encryptedKey: text("encrypted_key").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.workspaceId, table.version],
+      name: "vault_encryption_keys_pkey",
+    }),
+    foreignKey({
+      name: "vault_encryption_keys_workspace_id_fkey",
+      columns: [table.workspaceId],
+      foreignColumns: [workspaces.id],
+    }).onDelete("cascade"),
+    check("vault_encryption_keys_version_check", sql`${table.version} > 0`),
+  ]
+);
+
+export const vaultAuditEvents = pgTable(
+  "vault_audit_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    userId: text("user_id").notNull(),
+    vaultItemId: text("vault_item_id").notNull(),
+    action: text("action").notNull(),
+    purpose: text("purpose").notNull(),
+    origin: text("origin").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "vault_audit_events_workspace_id_fkey",
+      columns: [table.workspaceId],
+      foreignColumns: [workspaces.id],
+    }).onDelete("cascade"),
+    check(
+      "vault_audit_events_action_check",
+      sql`${table.action} = 'secret_accessed'`
+    ),
+    check(
+      "vault_audit_events_purpose_check",
+      sql`${table.purpose} IN ('availability_check', 'autofill')`
+    ),
+    index("vault_audit_events_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt.desc().nullsFirst()
+    ),
+  ]
+);
+
 export const settings = pgTable(
   "settings",
   {

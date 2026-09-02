@@ -15,14 +15,25 @@ import {
   type VaultCreateItem,
 } from "@/lib/vault";
 import type { AccessScope } from "@/lib/access-scope";
-import { db, vaultItems } from "@/db";
+import { db, vaultAuditEvents, vaultItems } from "@/db";
 import {
   deleteEncryptedSecret,
   readEncryptedSecret,
   writeEncryptedSecret,
 } from "@/db/services/secrets";
 import { ensureScope } from "@/db/services/scope";
+import {
+  readActiveVaultDataKey,
+  readVaultDataKey,
+} from "@/db/services/vault-keys";
 import { getInstallationSecrets } from "@/lib/installation-secrets";
+
+const vaultSecretAccessSchema = z.object({
+  origin: z.url().max(500),
+  purpose: z.enum(["availability_check", "autofill"]),
+});
+
+type VaultSecretAccess = z.infer<typeof vaultSecretAccessSchema>;
 
 const vaultRecordSchema = z.object({
   account: z.string(),
@@ -121,11 +132,17 @@ export async function saveVaultItem(
   }
 }
 
-export async function readVaultSecret(scope: AccessScope, id: string) {
+export async function readVaultSecret(
+  scope: AccessScope,
+  id: string,
+  access: VaultSecretAccess
+) {
   const encrypted = await readEncryptedSecret(scope, id);
   if (!encrypted) return undefined;
-  const { secretEncryptionKey } = await getInstallationSecrets();
-  return decryptVaultSecret(scope, id, encrypted, secretEncryptionKey);
+  const parsedAccess = vaultSecretAccessSchema.parse(access);
+  const secret = await decryptVaultSecret(scope, id, encrypted);
+  await recordVaultSecretAccess(scope, id, parsedAccess);
+  return secret;
 }
 
 export async function hasVaultSecret(scope: AccessScope, id: string) {
@@ -133,11 +150,11 @@ export async function hasVaultSecret(scope: AccessScope, id: string) {
 }
 
 async function writeVaultSecret(scope: AccessScope, id: string, value: string) {
-  const { secretEncryptionKey } = await getInstallationSecrets();
+  const dataKey = await readActiveVaultDataKey(scope);
   await writeEncryptedSecret(
     scope,
     id,
-    encryptVaultSecret(scope, id, value, secretEncryptionKey)
+    encryptVaultSecret(scope, id, value, dataKey)
   );
 }
 
@@ -166,35 +183,86 @@ function encryptVaultSecret(
   scope: AccessScope,
   id: string,
   value: string,
-  secretEncryptionKey: string
+  dataKey: { readonly key: Buffer; readonly version: number }
 ) {
   const iv = randomBytes(12);
-  const cipher = createCipheriv(
-    "aes-256-gcm",
-    Buffer.from(secretEncryptionKey, "base64"),
-    iv
-  );
-  cipher.setAAD(vaultSecretAad(scope, id));
+  const cipher = createCipheriv("aes-256-gcm", dataKey.key, iv);
+  cipher.setAAD(vaultSecretAad(scope, id, dataKey.version));
   const ciphertext = Buffer.concat([
     cipher.update(value, "utf8"),
     cipher.final(),
   ]);
   return [
-    "v1",
+    "v2",
+    String(dataKey.version),
     iv.toString("base64url"),
     cipher.getAuthTag().toString("base64url"),
     ciphertext.toString("base64url"),
   ].join(".");
 }
 
-function decryptVaultSecret(
+async function decryptVaultSecret(
+  scope: AccessScope,
+  id: string,
+  value: string
+) {
+  if (value.startsWith("v1.")) {
+    const { secretEncryptionKey } = await getInstallationSecrets();
+    const plaintext = decryptLegacyVaultSecret(
+      scope,
+      id,
+      value,
+      secretEncryptionKey
+    );
+    await writeVaultSecret(scope, id, plaintext);
+    return plaintext;
+  }
+
+  const parts = value.split(".");
+  const [format, encodedVersion, encodedIv, encodedTag, encodedCiphertext] =
+    parts;
+  const keyVersion = Number(encodedVersion);
+  if (
+    parts.length !== 5 ||
+    format !== "v2" ||
+    !Number.isSafeInteger(keyVersion) ||
+    keyVersion < 1 ||
+    !encodedIv ||
+    !encodedTag ||
+    !encodedCiphertext
+  ) {
+    throw new Error("The stored secret uses an unsupported format.");
+  }
+
+  const dataKey = await readVaultDataKey(scope, keyVersion);
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    dataKey.key,
+    Buffer.from(encodedIv, "base64url")
+  );
+  decipher.setAAD(vaultSecretAad(scope, id, keyVersion));
+  decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encodedCiphertext, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function decryptLegacyVaultSecret(
   scope: AccessScope,
   id: string,
   value: string,
   secretEncryptionKey: string
 ) {
-  const [version, encodedIv, encodedTag, encodedCiphertext] = value.split(".");
-  if (version !== "v1" || !encodedIv || !encodedTag || !encodedCiphertext) {
+  const parts = value.split(".");
+  const [format, encodedIv, encodedTag, encodedCiphertext] = parts;
+  if (
+    parts.length !== 4 ||
+    format !== "v1" ||
+    !encodedIv ||
+    !encodedTag ||
+    !encodedCiphertext
+  ) {
     throw new Error("The stored secret uses an unsupported format.");
   }
 
@@ -211,6 +279,25 @@ function decryptVaultSecret(
   ]).toString("utf8");
 }
 
-function vaultSecretAad(scope: AccessScope, id: string) {
-  return Buffer.from(`${scope.workspaceId}\u0000vault\u0000${id}`);
+async function recordVaultSecretAccess(
+  scope: AccessScope,
+  vaultItemId: string,
+  access: VaultSecretAccess
+) {
+  const origin = new URL(access.origin).origin;
+  await db.insert(vaultAuditEvents).values({
+    action: "secret_accessed",
+    createdAt: new Date().toISOString(),
+    id: randomUUID(),
+    origin,
+    purpose: access.purpose,
+    userId: scope.userId,
+    vaultItemId,
+    workspaceId: scope.workspaceId,
+  });
+}
+
+function vaultSecretAad(scope: AccessScope, id: string, keyVersion?: number) {
+  const suffix = keyVersion ? `\u0000v2\u0000${String(keyVersion)}` : "";
+  return Buffer.from(`${scope.workspaceId}\u0000vault\u0000${id}${suffix}`);
 }
