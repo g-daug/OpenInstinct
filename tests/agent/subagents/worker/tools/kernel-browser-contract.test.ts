@@ -1,6 +1,7 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- Kernel's page type has private members beyond the AsyncIterable contract consumed by the browser tool. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { ConflictError } from "@onkernel/sdk";
 import type {
   createBrowserSession,
   deleteBrowserSession,
@@ -216,6 +217,29 @@ describe("Kernel browser contract", () => {
     ).rejects.toThrow(/browser-active.*saving login state/i);
     expect(mocks.withBrowserProfileWriteLock).toHaveBeenCalledOnce();
     expect(mocks.createBrowser).not.toHaveBeenCalled();
+  });
+
+  it("waits for an invisible profile write lease to finish", async () => {
+    mocks.createBrowser.mockRejectedValueOnce(
+      new ConflictError(
+        409,
+        { message: "The browser profile is locked" },
+        undefined,
+        new Headers()
+      )
+    );
+
+    const result = await manageBrowsers.execute(
+      { action: "create", save_changes: true },
+      workerContext
+    );
+
+    expect(result).toMatchObject({
+      browser: { session_id: "browser-1", status: "active" },
+    });
+    expect(mocks.createBrowser).toHaveBeenCalledTimes(2);
+    expect(mocks.listKernelBrowsers).toHaveBeenCalledTimes(2);
+    expect(mocks.createBrowserSession).toHaveBeenCalledOnce();
   });
 
   it("prunes stale owned records when Kernel reports a missing browser", async () => {

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { ConflictError, NotFoundError } from "@onkernel/sdk";
 import type {
   BrowserCreateResponse,
@@ -23,6 +24,7 @@ import {
 } from "@/agent/subagents/worker/lib/trace/domains";
 
 const browserTimeoutFloorSeconds = 15 * 60;
+const profileLeaseRetryDelaysMs = [100, 250, 500, 1000, 2000, 4000];
 
 const inputSchema = z.object({
   action: z.enum(["create", "update", "list", "get", "delete"]),
@@ -65,23 +67,10 @@ const manageBrowsers = defineTool({
               );
             }
           }
-          const browser = await kernel.browsers.create(
-            {
-              profile: {
-                id: profile.id,
-                save_changes: input.save_changes ?? false,
-              },
-              start_url: input.start_url,
-              stealth: true,
-              telemetry: {
-                browser: { page: { enabled: true } },
-                enabled: true,
-              },
-              timeout_seconds:
-                input.timeout_seconds ?? browserTimeoutFloorSeconds,
-              viewport: browserViewport(input),
-            },
-            { signal }
+          const browser = await createBrowserWithProfileLeaseRecovery(
+            profile.id,
+            input,
+            signal
           );
           try {
             await createBrowserSession(scope, {
@@ -188,6 +177,59 @@ export default manageBrowsers;
 function requireSessionId(sessionId: string | undefined) {
   if (!sessionId) throw new Error("A browser session ID is required.");
   return sessionId;
+}
+
+async function createBrowserWithProfileLeaseRecovery(
+  profileId: string | undefined,
+  input: z.infer<typeof inputSchema>,
+  signal?: AbortSignal
+) {
+  const create = () =>
+    kernel.browsers.create(
+      {
+        profile: {
+          id: profileId,
+          save_changes: input.save_changes ?? false,
+        },
+        start_url: input.start_url,
+        stealth: true,
+        telemetry: {
+          browser: { page: { enabled: true } },
+          enabled: true,
+        },
+        timeout_seconds: input.timeout_seconds ?? browserTimeoutFloorSeconds,
+        viewport: browserViewport(input),
+      },
+      { signal }
+    );
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await create();
+    } catch (error) {
+      const retryDelay = profileLeaseRetryDelaysMs[attempt];
+      if (
+        !input.save_changes ||
+        !(error instanceof ConflictError) ||
+        retryDelay === undefined
+      ) {
+        throw error;
+      }
+
+      const activeWriter = await findActiveProfileWriter(profileId, signal);
+      if (activeWriter) {
+        throw new Error(
+          `Browser session ${activeWriter.session_id} is already saving login state for this workspace. Retry after it finishes.`,
+          { cause: error }
+        );
+      }
+
+      // Kernel removes a closed writer from the active-session list before its
+      // profile snapshot has always released the write lease. Give that
+      // invisible finalization window a bounded chance to finish.
+      await delay(retryDelay, undefined, { signal });
+    }
+  }
 }
 
 async function retrieveBrowser(
