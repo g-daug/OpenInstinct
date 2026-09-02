@@ -6,8 +6,11 @@ import {
   finishBrowserAuthCheckpoint,
   readBrowserAuthCheckpoint,
 } from "@/db/services/browser-auth-checkpoints";
+import { deleteBrowserSession } from "@/db/services/browsers";
 import { requireWorkerScope } from "@/agent/subagents/worker/lib/access";
 import { requireOwnedBrowserSession } from "@/agent/subagents/worker/lib/owned-browser";
+import { harvestBrowserTraceDomains } from "@/agent/subagents/worker/lib/trace/domains";
+import { kernel } from "@/lib/kernel";
 
 const inputSchema = z.discriminatedUnion("action", [
   z.object({
@@ -34,11 +37,22 @@ export default defineTool({
       throw new Error("Authentication checkpoints require a parent session.");
 
     if (input.action === "pause") {
-      await requireOwnedBrowserSession(scope, input.browser_session_id);
+      const browser = await requireOwnedBrowserSession(
+        scope,
+        input.browser_session_id
+      );
       const origin = new URL(input.origin).origin;
       if (origin !== input.origin) {
         throw new Error(
           "Authentication checkpoint origin must not include a path."
+        );
+      }
+      if (input.challenge_type === "vault_login") {
+        await closeBrowserForVaultSetup(
+          scope,
+          browser,
+          context.session.id,
+          context.abortSignal
         );
       }
       const checkpoint = await createBrowserAuthCheckpoint(scope, {
@@ -51,10 +65,14 @@ export default defineTool({
         workerSessionId: context.session.id,
       });
       return {
+        browser_disposition:
+          input.challenge_type === "vault_login" ? "closed" : "preserved",
         checkpoint_id: checkpoint.id,
         expires_at: checkpoint.expiresAt,
         instructions:
-          "Return failure through final_output with blocker.type browser_authentication and this checkpoint_id. Keep the browser open.",
+          input.challenge_type === "vault_login"
+            ? "Return failure through final_output with blocker.type browser_authentication and this checkpoint_id. The browser was closed to release the profile lock. After resumption, create a fresh writable browser at the saved origin and continue."
+            : "Return failure through final_output with blocker.type browser_authentication and this checkpoint_id. Keep the browser open.",
       };
     }
 
@@ -76,6 +94,28 @@ export default defineTool({
     return { checkpoint_id: finished.id, status: finished.status };
   },
 });
+
+async function closeBrowserForVaultSetup(
+  scope: Awaited<ReturnType<typeof requireWorkerScope>>,
+  browser: Awaited<ReturnType<typeof requireOwnedBrowserSession>>,
+  fallbackWorkerSessionId: string,
+  signal?: AbortSignal
+) {
+  await harvestBrowserTraceDomains(
+    scope,
+    browser.workerSessionId ?? fallbackWorkerSessionId,
+    { createdAt: browser.createdAt, sessionId: browser.sessionId },
+    signal
+  ).catch(() => undefined);
+  await kernel.browsers
+    .deleteByID(browser.sessionId, { signal })
+    .catch((cause: unknown) => {
+      if (!z.object({ status: z.literal(404) }).safeParse(cause).success) {
+        throw cause;
+      }
+    });
+  await deleteBrowserSession(scope, browser.sessionId);
+}
 
 function authPrompt(
   challengeType: (typeof browserAuthChallengeTypes)[number],
