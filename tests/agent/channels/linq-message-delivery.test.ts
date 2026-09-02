@@ -15,6 +15,7 @@ interface BrowserImage {
 
 const linqChannelCapture = vi.hoisted(() => ({
   images: new Map<string, BrowserImage>(),
+  readDroppedThreadMonitor: vi.fn(),
   readImage: vi.fn<
     (
       scope: AccessScope,
@@ -25,6 +26,9 @@ const linqChannelCapture = vi.hoisted(() => ({
       }
     ) => Promise<BrowserImage | undefined>
   >(),
+}));
+vi.mock("@/db/services/dropped-thread-monitors", () => ({
+  readDroppedThreadMonitor: linqChannelCapture.readDroppedThreadMonitor,
 }));
 vi.mock("@/db/services/browser-images", () => ({
   async readReadyBrowserImageArtifact(
@@ -67,6 +71,7 @@ const channelEvents = linqChannelConfig.events;
 const deliverInputRequested = channelEvents["input.requested"];
 const deliverApprovalSettled = channelEvents["approval.settled"];
 const deliverAuthorizationRequired = channelEvents["authorization.required"];
+const deliverAuthorizationCompleted = channelEvents["authorization.completed"];
 const trackWorkerCancellation = channelEvents["action.result"];
 const deliverCompletedMessage = channelEvents["message.completed"];
 
@@ -86,6 +91,7 @@ interface LinqTestState {
   pendingAuthMessageIds?: Record<string, string>;
   pendingLinqInputRequestIds?: readonly string[];
   pendingToolCallMessage?: string | null;
+  droppedThreadMonitorOnboardingOffered?: boolean;
   workerCancellations?: readonly {
     readonly sourceMessageId: string;
     readonly taskId: string;
@@ -170,6 +176,59 @@ describe("Linq message delivery", () => {
     expect(state.pendingAuthMessageIds).toEqual({
       google_workspace: "posted-message-1",
     });
+  });
+
+  it("offers the dropped-email monitor once after first Google authorization", async () => {
+    linqChannelCapture.readDroppedThreadMonitor.mockResolvedValue(undefined);
+    const state: LinqTestState = {
+      pendingAuthMessageIds: { google_workspace: "auth-message" },
+    };
+    const { context, post } = handlerContext("message-1", state);
+    const event = {
+      authorization: { displayName: "Google" },
+      name: "google_workspace",
+      outcome: "authorized" as const,
+      sequence: 0,
+      stepIndex: 0,
+      turnId: "turn-1",
+    };
+
+    await deliverAuthorizationCompleted(event, context, sessionContext());
+    await deliverAuthorizationCompleted(event, context, sessionContext());
+
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenNthCalledWith(1, {
+      markdown:
+        "Google is connected. I can also check once a day for sent emails that may need a follow-up.",
+    });
+    expect(post).toHaveBeenNthCalledWith(2, {
+      markdown: 'To set it up, reply: "Turn on my dropped-email monitor."',
+    });
+    expect(state.pendingAuthMessageIds).toEqual({});
+    expect(state.droppedThreadMonitorOnboardingOffered).toBe(true);
+  });
+
+  it("does not offer monitor onboarding when one was already configured", async () => {
+    linqChannelCapture.readDroppedThreadMonitor.mockResolvedValue({
+      enabled: false,
+      id: "monitor-1",
+    });
+    const { context, post } = handlerContext();
+
+    await deliverAuthorizationCompleted(
+      {
+        authorization: { displayName: "Google" },
+        name: "google_workspace",
+        outcome: "authorized",
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      context,
+      sessionContext()
+    );
+
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("posts final responses as native iMessage Markdown", async () => {

@@ -17,6 +17,7 @@ import {
 } from "../lib/linq-browser-image-markdown";
 import { env } from "@/env";
 import { consumeWorkerCancellationTurn } from "../lib/worker-cancellation-delivery";
+import { readDroppedThreadMonitor } from "@/db/services/dropped-thread-monitors";
 
 const verifiedPhoneUserSchema = z.object({
   id: z.string().min(1),
@@ -37,6 +38,10 @@ const workerCancellationsSchema = z.array(
 );
 const pendingLinqInputRequestIdsSchema = z.array(z.string());
 const markdownListItemPattern = /^\s*(?:[-+*]|\d+[.)])\s+/u;
+const droppedThreadMonitorOnboarding = [
+  "Google is connected. I can also check once a day for sent emails that may need a follow-up.",
+  'To set it up, reply: "Turn on my dropped-email monitor."',
+].join("\n\n");
 
 function splitLinqReply(message: string) {
   return message
@@ -164,6 +169,34 @@ export const linqChannelConfig = {
           [event.name]: statusMessageId,
         };
       }
+    },
+    async "authorization.completed"(event, context, session) {
+      if (!context.thread || event.candidateId !== undefined) return;
+
+      const pendingAuthorizationMessages =
+        context.state.pendingAuthMessageIds ?? {};
+      if (pendingAuthorizationMessages[event.name] !== undefined) {
+        context.state.pendingAuthMessageIds = Object.fromEntries(
+          Object.entries(pendingAuthorizationMessages).filter(
+            ([name]) => name !== event.name
+          )
+        );
+      }
+      if (event.outcome !== "authorized" || !isGoogleAuthorization(event)) {
+        return;
+      }
+      if (context.state.droppedThreadMonitorOnboardingOffered === true) return;
+
+      const caller =
+        session.session.auth.current ?? session.session.auth.initiator;
+      if (!caller) return;
+      const monitor = await readDroppedThreadMonitor(
+        scopeFromPrincipal(caller)
+      );
+      if (monitor !== undefined) return;
+
+      await postLinqReply(context.thread, droppedThreadMonitorOnboarding);
+      context.state.droppedThreadMonitorOnboardingOffered = true;
     },
     "action.result"(event, context) {
       const result = taskCancelResultSchema.safeParse(event.result);
@@ -329,4 +362,13 @@ async function findVerifiedAuthUserIdByPhoneNumber(phoneNumber: string) {
   });
   const parsed = verifiedPhoneUserSchema.safeParse(user);
   return parsed.success ? parsed.data.id : undefined;
+}
+
+function isGoogleAuthorization(event: {
+  readonly authorization?: { readonly displayName?: string };
+  readonly name: string;
+}) {
+  return /google/iu.test(
+    `${event.name} ${event.authorization?.displayName ?? ""}`
+  );
 }

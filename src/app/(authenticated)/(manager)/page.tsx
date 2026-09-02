@@ -8,20 +8,24 @@ import {
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getGatewayModel } from "@/db/services/settings";
+import { readDroppedThreadMonitor } from "@/db/services/dropped-thread-monitors";
 import { env } from "@/env";
 import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
 import { requireRequestScope } from "@/lib/request-scope";
 import { GoogleWorkspaceAction } from "./_components/google-workspace-action";
 import { ChannelsSection } from "./_components/channels-section";
+import { DroppedThreadMonitorOnboarding } from "./_components/dropped-thread-monitor-onboarding";
 import { ModelSelector } from "./_components/model-selector";
 
 export default async function Page({ searchParams }: PageProps<"/">) {
   const google = (await searchParams).google;
   const scope = await requireRequestScope();
-  const [googleWorkspace, gatewayModel] = await Promise.all([
-    readGoogleWorkspaceConnection(scope.userId),
-    getGatewayModel(scope),
-  ]);
+  const [googleWorkspace, gatewayModel, droppedThreadMonitor] =
+    await Promise.all([
+      readGoogleWorkspaceConnection(scope.userId),
+      getGatewayModel(scope),
+      readDroppedThreadMonitor(scope),
+    ]);
   const browserReady = true;
   const imageStorageReady = Boolean(
     env.BLOB_STORE_ID ?? env.BLOB_READ_WRITE_TOKEN
@@ -47,6 +51,14 @@ export default async function Page({ searchParams }: PageProps<"/">) {
         linqPhoneNumber={env.LINQ_PHONE_NUMBER}
       />
       <GoogleWorkspaceSection connection={googleWorkspace} />
+      {googleWorkspace.state === "connected" &&
+      droppedThreadMonitor === undefined &&
+      env.LINQ_CONNECTOR !== undefined &&
+      env.LINQ_PHONE_NUMBER ? (
+        <DroppedThreadMonitorOnboarding
+          linqPhoneNumber={env.LINQ_PHONE_NUMBER}
+        />
+      ) : null}
 
       <WorkspaceSection headingId="connectors-heading" title="Infrastructure">
         <div className="divide-y divide-border/50 border-y border-border/50">
