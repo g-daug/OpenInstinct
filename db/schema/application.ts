@@ -350,6 +350,61 @@ export const followUps = pgTable(
   ]
 );
 
+export const emailReplyWatches = pgTable(
+  "email_reply_watches",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    createdByUserId: text("created_by_user_id").notNull(),
+    linqThreadId: text("linq_thread_id").notNull(),
+    authenticator: text("authenticator").notNull(),
+    issuer: text("issuer"),
+    subject: text("subject"),
+    phoneNumber: text("phone_number"),
+    gmailThreadId: text("gmail_thread_id").notNull(),
+    sentMessageId: text("sent_message_id").notNull(),
+    emailSubject: text("email_subject").notNull(),
+    sentAt: text("sent_at").notNull(),
+    nextCheckAt: text("next_check_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    state: text("state").notNull().default("active"),
+    replyMessageId: text("reply_message_id"),
+    replyDetectedAt: text("reply_detected_at"),
+    notifiedAt: text("notified_at"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    lastCheckedAt: text("last_checked_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "email_reply_watches_membership_fkey",
+      columns: [table.workspaceId, table.createdByUserId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+    }).onDelete("cascade"),
+    check(
+      "email_reply_watches_state_check",
+      sql`${table.state} IN ('active', 'notified', 'expired', 'cancelled')`
+    ),
+    uniqueIndex("email_reply_watches_thread_uidx").on(
+      table.workspaceId,
+      table.createdByUserId,
+      table.linqThreadId,
+      table.gmailThreadId
+    ),
+    index("email_reply_watches_due_idx").on(
+      table.state,
+      table.nextCheckAt,
+      table.leaseExpiresAt
+    ),
+  ]
+);
+
 export const droppedThreadMonitors = pgTable(
   "dropped_thread_monitors",
   {

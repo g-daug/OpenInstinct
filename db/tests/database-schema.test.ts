@@ -13,6 +13,7 @@ import {
   chats,
   droppedThreadFindings,
   droppedThreadMonitors,
+  emailReplyWatches,
   encryptedSecrets,
   followUps,
   linqToolConfirmations,
@@ -42,6 +43,7 @@ describe("database schema", () => {
         chats,
         droppedThreadFindings,
         droppedThreadMonitors,
+        emailReplyWatches,
         encryptedSecrets,
         followUps,
         linqToolConfirmations,
@@ -64,6 +66,7 @@ describe("database schema", () => {
       "chats",
       "dropped_thread_findings",
       "dropped_thread_monitors",
+      "email_reply_watches",
       "encrypted_secrets",
       "follow_ups",
       "linq_tool_confirmations",
@@ -82,6 +85,7 @@ describe("database schema", () => {
       browserTraces,
       followUps,
       droppedThreadMonitors,
+      emailReplyWatches,
     ]) {
       const foreignKeys = getTableConfig(table).foreignKeys;
       expect(foreignKeys.map((foreignKey) => foreignKey.getName())).toContain(
@@ -188,6 +192,7 @@ describe("migration deployment policy", () => {
         "browsers",
         "chats",
         "dropped-thread-monitors",
+        "email-reply-watches",
         "follow-ups",
         "linq-tool-confirmations",
         "scope",

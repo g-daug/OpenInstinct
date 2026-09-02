@@ -16,6 +16,8 @@ import {
   createLinqToolConfirmation,
   type LinqConfirmedAction,
 } from "@/db/services/linq-tool-confirmations";
+import { createEmailReplyWatch } from "@/db/services/email-reply-watches";
+import { scopeFromPrincipal } from "@/lib/access-scope";
 
 const inputSchema = z.discriminatedUnion("action", [
   z.object({
@@ -34,7 +36,10 @@ const inputSchema = z.discriminatedUnion("action", [
 ]);
 
 type GoogleWorkspaceWriteAction = z.infer<typeof inputSchema>["action"];
-const linqSessionAttributesSchema = z.object({ linqThreadId: z.string() });
+const linqSessionAttributesSchema = z.object({
+  linqThreadId: z.string(),
+  phoneNumber: z.string().optional(),
+});
 
 export function googleWorkspaceWriteApproval(
   action: GoogleWorkspaceWriteAction | undefined
@@ -75,9 +80,15 @@ export default defineTool({
         const confirmation = await confirmLinqWrite(input, ctx);
         if (confirmation) return confirmation;
         const sent = await sendGmail(ctx, input);
+        const replyMonitoring = await createReplyWatchAfterLinqSend(
+          input.subject,
+          sent,
+          ctx
+        );
         return {
           action: input.action,
           messageId: sent.id,
+          replyMonitoring,
           sent: true,
           threadId: sent.threadId,
         };
@@ -94,6 +105,32 @@ export default defineTool({
     }
   },
 });
+
+async function createReplyWatchAfterLinqSend(
+  emailSubject: string,
+  sent: { readonly id?: null | string; readonly threadId?: null | string },
+  ctx: ToolContext
+) {
+  if (!sent.id || !sent.threadId) return false;
+  const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
+  if (!caller) return false;
+  const attributes = linqSessionAttributesSchema.safeParse(caller.attributes);
+  if (!attributes.success) return false;
+  await createEmailReplyWatch(
+    {
+      auth: caller,
+      linqThreadId: attributes.data.linqThreadId,
+      phoneNumber: attributes.data.phoneNumber,
+      scope: scopeFromPrincipal(caller),
+    },
+    {
+      emailSubject,
+      gmailThreadId: sent.threadId,
+      sentMessageId: sent.id,
+    }
+  );
+  return true;
+}
 
 async function confirmLinqWrite(
   input: Extract<z.infer<typeof inputSchema>, { action: LinqConfirmedAction }>,

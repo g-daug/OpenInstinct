@@ -25,6 +25,8 @@ export default {
     "vercel",
   ],
   ignoreIssues: {
+    // Drizzle consumes relation exports through the assembled schema object.
+    "db/schema/auth.ts": ["exports"],
     // Eve AI Elements and shadcn registry primitives intentionally expose
     // a reusable component surface wider than this minimal chat consumes.
     "src/components/ai-elements/**/*.tsx": ["exports", "files", "types"],

@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
-import { gmail, type gmail_v1 } from "@googleapis/gmail";
+import { auth, gmail, type gmail_v1 } from "@googleapis/gmail";
+import { getToken } from "@vercel/connect";
 import type { ToolContext } from "eve/tools";
 import { z } from "zod";
+import { env } from "@/env";
+import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
 import { withGoogleAuth } from "./client";
 
 type GmailMessage = gmail_v1.Schema$Message;
@@ -71,15 +74,28 @@ export async function readGmailThread(ctx: ToolContext, threadId: string) {
       { format: "full", id: threadId, userId: "me" },
       { signal: ctx.abortSignal }
     );
-    return {
-      id: thread.id ?? threadId,
-      messages: (thread.messages ?? []).slice(-20).map((message) => ({
-        ...minimizeMessage(message),
-        attachments: collectAttachments(message.payload),
-        body: redactGoogleText(plainText(message.payload)),
-      })),
-    };
+    return minimizeThread(thread, threadId);
   });
+}
+
+export async function readGmailThreadForUser(userId: string, threadId: string) {
+  const token = await getToken(
+    env.GOOGLE_CONNECTOR_UID,
+    googleWorkspaceTokenParams(userId)
+  );
+  const authClient = new auth.OAuth2();
+  authClient.setCredentials({ access_token: token });
+  const client = gmail({ auth: authClient, version: "v1" });
+  const { data: thread } = await client.users.threads.get({
+    format: "metadata",
+    id: threadId,
+    metadataHeaders: ["From", "To", "Subject", "Date", "Message-ID"],
+    userId: "me",
+  });
+  return {
+    id: thread.id ?? threadId,
+    messages: (thread.messages ?? []).slice(-20).map(minimizeMessage),
+  };
 }
 
 export async function updateGmail(
@@ -147,6 +163,45 @@ export async function sendGmail(
   });
 }
 
+export function findReplyAfterSentMessage(
+  thread: {
+    readonly messages: readonly {
+      readonly date: string | null;
+      readonly from: string | null;
+      readonly id: string | null;
+      readonly internalDate: string | null;
+      readonly labels: readonly string[];
+      readonly subject: string | null;
+    }[];
+  },
+  sentMessageId: string,
+  sentAt: string
+) {
+  const baselineIndex = thread.messages.findIndex(
+    (message) => message.id === sentMessageId
+  );
+  const sentAtMs = new Date(sentAt).getTime();
+  const candidates =
+    baselineIndex >= 0
+      ? thread.messages.slice(baselineIndex + 1)
+      : thread.messages.filter((message) => {
+          const internalDate = Number(message.internalDate);
+          return Number.isFinite(internalDate) && internalDate > sentAtMs;
+        });
+  const reply = candidates.findLast(
+    (message) =>
+      message.id !== null && !message.labels.some((label) => label === "SENT")
+  );
+  return reply?.id
+    ? {
+        date: reply.date,
+        from: reply.from,
+        messageId: reply.id,
+        subject: reply.subject,
+      }
+    : undefined;
+}
+
 export function gmailUpdateLabels(action: GmailUpdateAction) {
   switch (action) {
     case "archive":
@@ -194,12 +249,24 @@ function minimizeMessage(message: GmailMessage) {
     date: header(message.payload, "Date"),
     from: header(message.payload, "From"),
     id: message.id ?? null,
+    internalDate: message.internalDate ?? null,
     labels: message.labelIds ?? [],
     messageId: header(message.payload, "Message-ID"),
     snippet: redactGoogleText(message.snippet ?? "", 500),
     subject: header(message.payload, "Subject"),
     threadId: message.threadId ?? null,
     to: header(message.payload, "To"),
+  };
+}
+
+function minimizeThread(thread: gmail_v1.Schema$Thread, fallbackId: string) {
+  return {
+    id: thread.id ?? fallbackId,
+    messages: (thread.messages ?? []).slice(-20).map((message) => ({
+      ...minimizeMessage(message),
+      attachments: collectAttachments(message.payload),
+      body: redactGoogleText(plainText(message.payload)),
+    })),
   };
 }
 
