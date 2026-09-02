@@ -49,6 +49,9 @@ describe("root and worker capability boundaries", () => {
     expect(rootInstructions).toContain(
       "try `web_fetch` before browser automation"
     );
+    expect(rootInstructions).toContain(
+      "do not merely describe the vault or claim credentials are saved"
+    );
   });
 
   it("keeps durable memory scoped to the authenticated root user", () => {
