@@ -187,6 +187,7 @@ describe("migration deployment policy", () => {
         "browser-traces",
         "browsers",
         "chats",
+        "dropped-thread-monitors",
         "follow-ups",
         "linq-tool-confirmations",
         "scope",

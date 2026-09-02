@@ -22,8 +22,10 @@ describe("root and worker capability boundaries", () => {
       "google_workspace_read.ts",
       "google_workspace_write.ts",
       "list_follow_ups.ts",
+      "manage_dropped_thread_monitor.ts",
       "request_vault_import.ts",
       "request_vault_setup.ts",
+      "review_dropped_thread_monitor.ts",
       "update_follow_up.ts",
     ]);
     expect(existsSync(`${rootTools}/sendMessage.ts`)).toBe(false);
