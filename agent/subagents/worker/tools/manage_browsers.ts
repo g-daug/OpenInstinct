@@ -68,7 +68,7 @@ const manageBrowsers = defineTool({
             }
           }
           const browser = await createBrowserWithProfileLeaseRecovery(
-            profile.id,
+            profile,
             input,
             signal
           );
@@ -180,15 +180,16 @@ function requireSessionId(sessionId: string | undefined) {
 }
 
 async function createBrowserWithProfileLeaseRecovery(
-  profileId: string | undefined,
+  initialProfile: Awaited<ReturnType<typeof ensureUserProfile>>,
   input: z.infer<typeof inputSchema>,
   signal?: AbortSignal
 ) {
+  let profile = initialProfile;
   const create = () =>
     kernel.browsers.create(
       {
         profile: {
-          id: profileId,
+          id: profile.id,
           save_changes: input.save_changes ?? false,
         },
         start_url: input.start_url,
@@ -207,16 +208,11 @@ async function createBrowserWithProfileLeaseRecovery(
     try {
       return await create();
     } catch (error) {
-      const retryDelay = profileLeaseRetryDelaysMs[attempt];
-      if (
-        !input.save_changes ||
-        !(error instanceof ConflictError) ||
-        retryDelay === undefined
-      ) {
+      if (!input.save_changes || !(error instanceof ConflictError)) {
         throw error;
       }
 
-      const activeWriter = await findActiveProfileWriter(profileId, signal);
+      const activeWriter = await findActiveProfileWriter(profile.id, signal);
       if (activeWriter) {
         throw new Error(
           `Browser session ${activeWriter.session_id} is already saving login state for this workspace. Retry after it finishes.`,
@@ -224,11 +220,55 @@ async function createBrowserWithProfileLeaseRecovery(
         );
       }
 
+      const retryDelay = profileLeaseRetryDelaysMs[attempt];
+      if (retryDelay === undefined) {
+        profile = await rotateStaleProfile(profile, signal);
+        try {
+          return await create();
+        } catch (recoveryError) {
+          throw new Error(
+            "The stale browser profile was preserved, but its replacement could not start. Retry the task once more.",
+            { cause: recoveryError }
+          );
+        }
+      }
+
       // Kernel removes a closed writer from the active-session list before its
       // profile snapshot has always released the write lease. Give that
       // invisible finalization window a bounded chance to finish.
       await delay(retryDelay, undefined, { signal });
     }
+  }
+}
+
+async function rotateStaleProfile(
+  profile: Awaited<ReturnType<typeof ensureUserProfile>>,
+  signal?: AbortSignal
+) {
+  if (!profile.name) {
+    throw new Error(
+      "The stale browser profile has no recoverable name. Retry after the provider releases it."
+    );
+  }
+
+  const originalName = profile.name;
+  const recoverySuffix = createHash("sha256")
+    .update(`stale-profile\0${profile.id}\0${Date.now().toString()}`)
+    .digest("hex")
+    .slice(0, 12);
+  const preservedName = `${originalName.slice(0, 40)}-stale-${recoverySuffix}`;
+  await kernel.profiles.update(profile.id, { name: preservedName }, { signal });
+
+  try {
+    return await kernel.profiles.create({ name: originalName }, { signal });
+  } catch (error) {
+    await kernel.profiles
+      .update(profile.id, { name: originalName }, { signal })
+      .catch(() => undefined);
+    throw new Error(
+      "The stale browser profile could not be replaced; its original name was restored.",
+      { cause: error }
+    );
   }
 }
 

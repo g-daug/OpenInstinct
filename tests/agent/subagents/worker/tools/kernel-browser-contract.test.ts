@@ -55,6 +55,7 @@ vi.mock(
 
 const mocks = {
   createBrowser: vi.spyOn(kernel.browsers, "create"),
+  createProfile: vi.spyOn(kernel.profiles, "create"),
   createBrowserSession: serviceMocks.createBrowserSession,
   deleteBrowser: vi.spyOn(kernel.browsers, "deleteByID"),
   deleteBrowserSession: serviceMocks.deleteBrowserSession,
@@ -67,6 +68,7 @@ const mocks = {
   retrieveProfile: vi.spyOn(kernel.profiles, "retrieve"),
   requireWorkerScope: serviceMocks.requireWorkerScope,
   withBrowserProfileWriteLock: serviceMocks.withBrowserProfileWriteLock,
+  updateProfile: vi.spyOn(kernel.profiles, "update"),
 };
 
 beforeEach(() => {
@@ -79,6 +81,16 @@ beforeEach(() => {
     created_at: "2026-08-27T00:00:00.000Z",
     id: "profile-1",
     name: "opaque-profile",
+  });
+  mocks.createProfile.mockResolvedValue({
+    created_at: "2026-09-02T00:00:00.000Z",
+    id: "profile-recovered",
+    name: "opaque-profile",
+  });
+  mocks.updateProfile.mockResolvedValue({
+    created_at: "2026-08-27T00:00:00.000Z",
+    id: "profile-1",
+    name: "opaque-profile-stale",
   });
   mocks.listKernelBrowsers.mockReturnValue(kernelBrowserPage([]));
   mocks.createBrowser.mockResolvedValue({
@@ -241,6 +253,38 @@ describe("Kernel browser contract", () => {
     expect(mocks.listKernelBrowsers).toHaveBeenCalledTimes(2);
     expect(mocks.createBrowserSession).toHaveBeenCalledOnce();
   });
+
+  it("preserves and replaces a profile whose invisible write lease never clears", async () => {
+    const conflict = new ConflictError(
+      409,
+      { message: "The browser profile is locked" },
+      undefined,
+      new Headers()
+    );
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      mocks.createBrowser.mockRejectedValueOnce(conflict);
+    }
+
+    const result = await manageBrowsers.execute(
+      { action: "create", save_changes: true },
+      workerContext
+    );
+
+    expect(result).toMatchObject({
+      browser: { session_id: "browser-1", status: "active" },
+    });
+    expect(mocks.updateProfile).toHaveBeenCalledOnce();
+    expect(mocks.createProfile).toHaveBeenCalledExactlyOnceWith(
+      { name: "opaque-profile" },
+      { signal: workerContext.abortSignal }
+    );
+    expect(mocks.createBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        profile: { id: "profile-recovered", save_changes: true },
+      }),
+      { signal: workerContext.abortSignal }
+    );
+  }, 15_000);
 
   it("prunes stale owned records when Kernel reports a missing browser", async () => {
     mocks.listBrowserSessions.mockResolvedValue([
