@@ -240,6 +240,9 @@ describe("database services", () => {
     expect(
       await browsers.listWorkerBrowserSessions(bob, "worker-alice")
     ).toEqual([]);
+    expect(
+      await browsers.withBrowserProfileWriteLock(alice, async () => "locked")
+    ).toBe("locked");
     expect(await browsers.deleteBrowserSession(bob, "browser-alice")).toBe(
       false
     );

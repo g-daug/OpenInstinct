@@ -100,8 +100,9 @@ export async function withBrowserProfileWriteLock<T>(
   operation: () => Promise<T>
 ) {
   return db.transaction(async (transaction) => {
+    const lockKey = JSON.stringify([scope.workspaceId, scope.userId]);
     const result = await transaction.execute<{ acquired: boolean }>(
-      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`${scope.workspaceId}\0${scope.userId}`}, 0)) AS "acquired"`
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS "acquired"`
     );
     if (result.rows[0]?.acquired !== true) {
       throw new Error(
