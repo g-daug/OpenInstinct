@@ -39,8 +39,12 @@ describe("agent tool JSON schemas", () => {
     if (!(inputSchema instanceof z.ZodType)) {
       throw new Error("Expected the tool input schema to be a Zod schema.");
     }
-    expect(z.toJSONSchema(inputSchema)).toMatchObject({
+    const jsonSchema = z.toJSONSchema(inputSchema, { io: "input" });
+    expect(jsonSchema).toMatchObject({
       type: "object",
     });
+    expect(jsonSchema).not.toHaveProperty("allOf");
+    expect(jsonSchema).not.toHaveProperty("anyOf");
+    expect(jsonSchema).not.toHaveProperty("oneOf");
   });
 });

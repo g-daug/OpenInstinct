@@ -12,21 +12,29 @@ import { requireOwnedBrowserSession } from "@/agent/subagents/worker/lib/owned-b
 import { harvestBrowserTraceDomains } from "@/agent/subagents/worker/lib/trace/domains";
 import { kernel } from "@/lib/kernel";
 
+const validationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("pause"),
+    browser_session_id: z.string().trim().min(1),
+    challenge_type: z.enum(browserAuthChallengeTypes),
+    expires_in_seconds: z.number().int().min(60).max(3600).default(1800),
+    origin: z.url(),
+  }),
+  z.object({
+    action: z.enum(["complete", "fail"]),
+    checkpoint_id: z.uuid(),
+  }),
+]);
 const inputSchema = z
-  .discriminatedUnion("action", [
-    z.object({
-      action: z.literal("pause"),
-      browser_session_id: z.string().trim().min(1),
-      challenge_type: z.enum(browserAuthChallengeTypes),
-      expires_in_seconds: z.number().int().min(60).max(3600).default(1800),
-      origin: z.url(),
-    }),
-    z.object({
-      action: z.enum(["complete", "fail"]),
-      checkpoint_id: z.uuid(),
-    }),
-  ])
-  .meta({ type: "object" });
+  .object({
+    action: z.enum(["pause", "complete", "fail"]),
+    browser_session_id: z.string().trim().min(1).optional(),
+    challenge_type: z.enum(browserAuthChallengeTypes).optional(),
+    checkpoint_id: z.uuid().optional(),
+    expires_in_seconds: z.number().int().min(60).max(3600).optional(),
+    origin: z.url().optional(),
+  })
+  .pipe(validationSchema);
 
 export default defineTool({
   description:

@@ -13,29 +13,39 @@ import {
   snoozeDroppedThreadFinding,
 } from "@/db/services/dropped-thread-monitors";
 
+const validationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("configure"),
+    localHour: z.number().int().min(0).max(23),
+    localMinute: z.number().int().min(0).max(59),
+    lookbackDays: z.number().int().min(1).max(90).default(14),
+    minimumAgeHours: z.number().int().min(1).max(720).default(48),
+    timezone: z.string().trim().min(1).max(100),
+  }),
+  z.object({ action: z.literal("status") }),
+  z.object({ action: z.literal("disable") }),
+  z.object({
+    action: z.literal("snooze"),
+    snoozedUntil: z.iso.datetime({ offset: true }),
+    sourceThreadId: z.string().trim().min(1).max(200),
+  }),
+  z.object({
+    action: z.literal("dismiss"),
+    sourceThreadId: z.string().trim().min(1).max(200),
+  }),
+]);
 const inputSchema = z
-  .discriminatedUnion("action", [
-    z.object({
-      action: z.literal("configure"),
-      localHour: z.number().int().min(0).max(23),
-      localMinute: z.number().int().min(0).max(59),
-      lookbackDays: z.number().int().min(1).max(90).default(14),
-      minimumAgeHours: z.number().int().min(1).max(720).default(48),
-      timezone: z.string().trim().min(1).max(100),
-    }),
-    z.object({ action: z.literal("status") }),
-    z.object({ action: z.literal("disable") }),
-    z.object({
-      action: z.literal("snooze"),
-      snoozedUntil: z.iso.datetime({ offset: true }),
-      sourceThreadId: z.string().trim().min(1).max(200),
-    }),
-    z.object({
-      action: z.literal("dismiss"),
-      sourceThreadId: z.string().trim().min(1).max(200),
-    }),
-  ])
-  .meta({ type: "object" });
+  .object({
+    action: z.enum(["configure", "status", "disable", "snooze", "dismiss"]),
+    localHour: z.number().int().min(0).max(23).optional(),
+    localMinute: z.number().int().min(0).max(59).optional(),
+    lookbackDays: z.number().int().min(1).max(90).optional(),
+    minimumAgeHours: z.number().int().min(1).max(720).optional(),
+    snoozedUntil: z.iso.datetime({ offset: true }).optional(),
+    sourceThreadId: z.string().trim().min(1).max(200).optional(),
+    timezone: z.string().trim().min(1).max(100).optional(),
+  })
+  .pipe(validationSchema);
 
 export default defineTool({
   description:

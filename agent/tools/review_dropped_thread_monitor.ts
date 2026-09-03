@@ -7,15 +7,22 @@ import {
   readDroppedThreadMonitor,
 } from "@/db/services/dropped-thread-monitors";
 
+const validationSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("list_candidates") }),
+  z.object({
+    action: z.literal("claim_for_digest"),
+    sourceThreadIds: z.array(z.string().trim().min(1).max(200)).max(10),
+  }),
+]);
 const inputSchema = z
-  .discriminatedUnion("action", [
-    z.object({ action: z.literal("list_candidates") }),
-    z.object({
-      action: z.literal("claim_for_digest"),
-      sourceThreadIds: z.array(z.string().trim().min(1).max(200)).max(10),
-    }),
-  ])
-  .meta({ type: "object" });
+  .object({
+    action: z.enum(["list_candidates", "claim_for_digest"]),
+    sourceThreadIds: z
+      .array(z.string().trim().min(1).max(200))
+      .max(10)
+      .optional(),
+  })
+  .pipe(validationSchema);
 
 export default defineTool({
   description:

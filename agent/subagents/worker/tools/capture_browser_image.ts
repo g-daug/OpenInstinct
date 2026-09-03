@@ -28,29 +28,35 @@ const commonFields = {
   label: z.string().trim().min(1).max(200),
   session_id: z.string().min(1),
 };
+const validationSchema = z.discriminatedUnion("source", [
+  z.object({
+    ...commonFields,
+    region: regionSchema.optional(),
+    source: z.literal("viewport"),
+  }),
+  z.object({
+    ...commonFields,
+    source: z.literal("full_page"),
+  }),
+  z.object({
+    ...commonFields,
+    selector: z.string().trim().min(1).max(2_000),
+    source: z.literal("element"),
+  }),
+  z.object({
+    ...commonFields,
+    selector: z.string().trim().min(1).max(2_000),
+    source: z.literal("image_resource"),
+  }),
+]);
 const inputSchema = z
-  .discriminatedUnion("source", [
-    z.object({
-      ...commonFields,
-      region: regionSchema.optional(),
-      source: z.literal("viewport"),
-    }),
-    z.object({
-      ...commonFields,
-      source: z.literal("full_page"),
-    }),
-    z.object({
-      ...commonFields,
-      selector: z.string().trim().min(1).max(2_000),
-      source: z.literal("element"),
-    }),
-    z.object({
-      ...commonFields,
-      selector: z.string().trim().min(1).max(2_000),
-      source: z.literal("image_resource"),
-    }),
-  ])
-  .meta({ type: "object" });
+  .object({
+    ...commonFields,
+    region: regionSchema.optional(),
+    selector: z.string().trim().min(1).max(2_000).optional(),
+    source: z.enum(["viewport", "full_page", "element", "image_resource"]),
+  })
+  .pipe(validationSchema);
 const outputSchema = z.object({ image: browserImageArtifactReferenceSchema });
 
 type CaptureInput = z.infer<typeof inputSchema>;

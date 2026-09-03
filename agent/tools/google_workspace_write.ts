@@ -25,29 +25,52 @@ import {
 import { scopeFromPrincipal } from "@/lib/access-scope";
 import { GOOGLE_ACCOUNT_MODES } from "@/lib/google-workspace";
 
+const senderSchema = z
+  .enum(GOOGLE_ACCOUNT_MODES)
+  .default("dedicated")
+  .describe(
+    "Use dedicated by default. Use personal only when the user explicitly asks to send from their personal Google account."
+  );
+const validationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("update_email"),
+    messageIds: z.array(z.string().min(1).max(200)).min(1).max(100),
+    update: z.enum(GMAIL_UPDATE_ACTIONS),
+  }),
+  gmailSendSchema.extend({
+    action: z.literal("send_email"),
+    confirmationId: z.string().min(1).max(500).optional(),
+    sender: senderSchema,
+  }),
+  calendarEventSchema.extend({
+    action: z.literal("create_calendar_event"),
+    confirmationId: z.string().min(1).max(500).optional(),
+  }),
+]);
 const inputSchema = z
-  .discriminatedUnion("action", [
-    z.object({
-      action: z.literal("update_email"),
-      messageIds: z.array(z.string().min(1).max(200)).min(1).max(100),
-      update: z.enum(GMAIL_UPDATE_ACTIONS),
-    }),
-    gmailSendSchema.extend({
-      action: z.literal("send_email"),
-      confirmationId: z.string().min(1).max(500).optional(),
-      sender: z
-        .enum(GOOGLE_ACCOUNT_MODES)
-        .default("dedicated")
-        .describe(
-          "Use dedicated by default. Use personal only when the user explicitly asks to send from their personal Google account."
-        ),
-    }),
-    calendarEventSchema.extend({
-      action: z.literal("create_calendar_event"),
-      confirmationId: z.string().min(1).max(500).optional(),
-    }),
-  ])
-  .meta({ type: "object" });
+  .object({
+    action: z.enum(["update_email", "send_email", "create_calendar_event"]),
+    attendees: calendarEventSchema.shape.attendees.optional(),
+    bcc: gmailSendSchema.shape.bcc.optional(),
+    body: gmailSendSchema.shape.body.optional(),
+    calendarId: calendarEventSchema.shape.calendarId.optional(),
+    cc: gmailSendSchema.shape.cc.optional(),
+    confirmationId: z.string().min(1).max(500).optional(),
+    description: calendarEventSchema.shape.description.optional(),
+    end: calendarEventSchema.shape.end.optional(),
+    inReplyTo: gmailSendSchema.shape.inReplyTo.optional(),
+    location: calendarEventSchema.shape.location.optional(),
+    messageIds: z.array(z.string().min(1).max(200)).min(1).max(100).optional(),
+    sender: senderSchema.optional(),
+    start: calendarEventSchema.shape.start.optional(),
+    subject: gmailSendSchema.shape.subject.optional(),
+    summary: calendarEventSchema.shape.summary.optional(),
+    threadId: gmailSendSchema.shape.threadId.optional(),
+    timezone: calendarEventSchema.shape.timezone.optional(),
+    to: gmailSendSchema.shape.to.optional(),
+    update: z.enum(GMAIL_UPDATE_ACTIONS).optional(),
+  })
+  .pipe(validationSchema);
 
 type GoogleWorkspaceWriteAction = z.infer<typeof inputSchema>["action"];
 const linqSessionAttributesSchema = z.object({
