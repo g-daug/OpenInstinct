@@ -297,7 +297,10 @@ describe("Kernel browser contract", () => {
       ])
     );
     mocks.readActiveBrowserAuthCheckpointForBrowserSession.mockResolvedValue({
+      challengeType: "other",
+      expiresAt: "2026-09-03T16:33:30.853Z",
       id: "checkpoint-1",
+      origin: "https://accounts.google.com",
     });
 
     await expect(
@@ -305,7 +308,9 @@ describe("Kernel browser contract", () => {
         { action: "create", save_changes: true },
         workerContext
       )
-    ).rejects.toThrow(/browser-paused.*saving login state/i);
+    ).rejects.toThrow(
+      /accounts\.google\.com.*waiting for other input.*finish or cancel/i
+    );
     expect(mocks.deleteBrowser).not.toHaveBeenCalled();
   });
 

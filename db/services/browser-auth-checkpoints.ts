@@ -112,7 +112,12 @@ export async function readActiveBrowserAuthCheckpointForBrowserSession(
 ) {
   await expireBrowserAuthCheckpoints(scope);
   const [checkpoint] = await db
-    .select({ id: browserAuthCheckpoints.id })
+    .select({
+      challengeType: browserAuthCheckpoints.challengeType,
+      expiresAt: browserAuthCheckpoints.expiresAt,
+      id: browserAuthCheckpoints.id,
+      origin: browserAuthCheckpoints.origin,
+    })
     .from(browserAuthCheckpoints)
     .where(
       and(

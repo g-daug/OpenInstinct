@@ -66,6 +66,16 @@ const manageBrowsers = defineTool({
               signal
             );
             if (activeWriter) {
+              const checkpoint =
+                await readActiveBrowserAuthCheckpointForBrowserSession(
+                  scope,
+                  activeWriter.session_id
+                );
+              if (checkpoint) {
+                throw new Error(
+                  `Authentication at ${checkpoint.origin} is waiting for ${checkpoint.challengeType} input until ${checkpoint.expiresAt}. Ask the user whether to finish or cancel that pending login before starting another authenticated browser task.`
+                );
+              }
               const cleared = await clearStaleActiveProfileWriter(
                 scope,
                 activeWriter,

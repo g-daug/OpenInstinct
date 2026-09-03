@@ -23,6 +23,15 @@ describe("worker input bubbling", () => {
     );
     expect(instructions).toContain("returns a `Needs user input:` blocker");
     expect(instructions).toContain("`browser_auth_resume` with `bind`");
+    expect(instructions).toContain(
+      "Before starting any new authenticated browser task"
+    );
+    expect(instructions).toContain(
+      "do not start another worker or describe it as an unidentified browser-profile lock"
+    );
+    expect(instructions).toContain(
+      "Cancel it only when the user explicitly asks"
+    );
     expect(browserSkill).toContain("`manage_auth_checkpoint` with `pause`");
     expect(browserSkill).toContain("End the turn immediately");
   });
