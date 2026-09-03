@@ -7,6 +7,7 @@ import {
   nativeLoginAutofillTokens,
   nativeLoginControlInspectionExpression,
   nativeLoginFillFunctionDeclaration,
+  nativeLoginSubmitKeyEvents,
   selectNativeLoginFills,
   type ClassifiedNativeLoginControl,
 } from "./login";
@@ -122,13 +123,18 @@ export async function fillWithKernelNativeAutofill({
   expectedOrigin,
   kind,
   signal,
+  submit,
 }: {
   readonly browserSessionId: string;
   readonly claims: readonly AutofillClaim[];
   readonly expectedOrigin: string;
   readonly kind: NativeAutofillKind;
   readonly signal?: AbortSignal;
+  readonly submit?: boolean;
 }) {
+  if (submit && kind !== "login") {
+    throw new Error("Automatic form submission is supported only for logins.");
+  }
   const payload =
     kind === "login" ? undefined : buildNativeAutofillPayload(kind, claims);
 
@@ -143,12 +149,13 @@ export async function fillWithKernelNativeAutofill({
       }
 
       if (kind === "login") {
-        const filledClaims = await fillNativeLoginControls(
+        const result = await fillNativeLoginControls(
           connection,
           sessionId,
-          claims
+          claims,
+          submit ?? false
         );
-        return { filledClaims, origin };
+        return { ...result, origin };
       }
 
       const controls = await inspectControls(connection, sessionId, kind);
@@ -173,7 +180,7 @@ export async function fillWithKernelNativeAutofill({
           lastError = error;
           continue;
         }
-        return { filledClaims: claims.length, origin };
+        return { filledClaims: claims.length, origin, submitted: false };
       }
 
       throw new Error(
@@ -187,7 +194,8 @@ export async function fillWithKernelNativeAutofill({
 async function fillNativeLoginControls(
   connection: CdpConnection,
   sessionIds: readonly string[],
-  claims: readonly AutofillClaim[]
+  claims: readonly AutofillClaim[],
+  submit: boolean
 ) {
   const controls = await inspectNativeLoginControls(connection, sessionIds);
   const focused = controls.find((control) => control.focused);
@@ -214,7 +222,14 @@ async function fillNativeLoginControls(
       throw new Error("The login form rejected secure credential autofill.");
     }
   }
-  return fills.length;
+  if (submit) {
+    const target = fills.at(-1)?.control;
+    if (!target) throw new Error("No filled login control can be submitted.");
+    for (const event of nativeLoginSubmitKeyEvents) {
+      await connection.send("Input.dispatchKeyEvent", event, target.sessionId);
+    }
+  }
+  return { filledClaims: fills.length, submitted: submit };
 }
 
 async function inspectNativeLoginControls(

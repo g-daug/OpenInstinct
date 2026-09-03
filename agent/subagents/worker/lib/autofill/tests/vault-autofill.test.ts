@@ -11,6 +11,7 @@ import {
 } from "@/lib/vault";
 import {
   classifyNativeLoginControl,
+  nativeLoginSubmitKeyEvents,
   selectNativeLoginFills,
   type NativeLoginControlDescriptor,
 } from "@/agent/subagents/worker/lib/autofill/login";
@@ -550,6 +551,17 @@ describe("vault browser autofill", () => {
         ]
       )
     ).toEqual([{ control: focusedIdentifier, value: "member-1" }]);
+  });
+
+  it("submits a securely filled login with a complete trusted Enter sequence", () => {
+    expect(nativeLoginSubmitKeyEvents).toEqual([
+      expect.objectContaining({ key: "Enter", type: "rawKeyDown" }),
+      expect.objectContaining({ key: "Enter", text: "\r", type: "char" }),
+      expect.objectContaining({ key: "Enter", type: "keyUp" }),
+    ]);
+    expect(JSON.stringify(nativeLoginSubmitKeyEvents)).not.toContain(
+      "correct horse"
+    );
   });
 
   it("fills a username into a combined email-or-membership field", () => {

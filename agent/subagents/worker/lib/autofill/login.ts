@@ -154,6 +154,32 @@ export const nativeLoginFillFunctionDeclaration = `function(value) {
   return this.value.length > 0;
 }`;
 
+export const nativeLoginSubmitKeyEvents = [
+  {
+    code: "Enter",
+    key: "Enter",
+    nativeVirtualKeyCode: 13,
+    type: "rawKeyDown",
+    windowsVirtualKeyCode: 13,
+  },
+  {
+    code: "Enter",
+    key: "Enter",
+    nativeVirtualKeyCode: 13,
+    text: "\r",
+    type: "char",
+    unmodifiedText: "\r",
+    windowsVirtualKeyCode: 13,
+  },
+  {
+    code: "Enter",
+    key: "Enter",
+    nativeVirtualKeyCode: 13,
+    type: "keyUp",
+    windowsVirtualKeyCode: 13,
+  },
+] as const;
+
 function compareLoginControls(
   left: ClassifiedNativeLoginControl,
   right: ClassifiedNativeLoginControl
