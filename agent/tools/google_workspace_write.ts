@@ -25,27 +25,29 @@ import {
 import { scopeFromPrincipal } from "@/lib/access-scope";
 import { GOOGLE_ACCOUNT_MODES } from "@/lib/google-workspace";
 
-const inputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("update_email"),
-    messageIds: z.array(z.string().min(1).max(200)).min(1).max(100),
-    update: z.enum(GMAIL_UPDATE_ACTIONS),
-  }),
-  gmailSendSchema.extend({
-    action: z.literal("send_email"),
-    confirmationId: z.string().min(1).max(500).optional(),
-    sender: z
-      .enum(GOOGLE_ACCOUNT_MODES)
-      .default("dedicated")
-      .describe(
-        "Use dedicated by default. Use personal only when the user explicitly asks to send from their personal Google account."
-      ),
-  }),
-  calendarEventSchema.extend({
-    action: z.literal("create_calendar_event"),
-    confirmationId: z.string().min(1).max(500).optional(),
-  }),
-]);
+const inputSchema = z
+  .discriminatedUnion("action", [
+    z.object({
+      action: z.literal("update_email"),
+      messageIds: z.array(z.string().min(1).max(200)).min(1).max(100),
+      update: z.enum(GMAIL_UPDATE_ACTIONS),
+    }),
+    gmailSendSchema.extend({
+      action: z.literal("send_email"),
+      confirmationId: z.string().min(1).max(500).optional(),
+      sender: z
+        .enum(GOOGLE_ACCOUNT_MODES)
+        .default("dedicated")
+        .describe(
+          "Use dedicated by default. Use personal only when the user explicitly asks to send from their personal Google account."
+        ),
+    }),
+    calendarEventSchema.extend({
+      action: z.literal("create_calendar_event"),
+      confirmationId: z.string().min(1).max(500).optional(),
+    }),
+  ])
+  .meta({ type: "object" });
 
 type GoogleWorkspaceWriteAction = z.infer<typeof inputSchema>["action"];
 const linqSessionAttributesSchema = z.object({

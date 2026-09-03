@@ -10,36 +10,38 @@ import {
   searchGmail,
 } from "@/agent/lib/google-workspace/gmail";
 
-const inputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("search_email"),
-    maxResults: z.number().int().min(1).max(25).default(10),
-    query: z.string().min(1).max(1_000),
-  }),
-  z.object({
-    action: z.literal("read_email_thread"),
-    threadId: z.string().min(1).max(200),
-  }),
-  z.object({
-    action: z.literal("list_calendar_events"),
-    calendarId: z.string().default("primary"),
-    maxResults: z.number().int().min(1).max(50).default(20),
-    timeMax: z.iso.datetime({ offset: true }),
-    timeMin: z.iso.datetime({ offset: true }),
-  }),
-  z.object({
-    action: z.literal("check_calendar_availability"),
-    calendars: z.array(z.string()).min(1).max(10).default(["primary"]),
-    timeMax: z.iso.datetime({ offset: true }),
-    timeMin: z.iso.datetime({ offset: true }),
-    timezone: z.string().min(1).default("UTC"),
-  }),
-  z.object({
-    action: z.literal("search_contacts"),
-    pageSize: z.number().int().min(1).max(20).default(10),
-    query: z.string().min(1).max(200),
-  }),
-]);
+const inputSchema = z
+  .discriminatedUnion("action", [
+    z.object({
+      action: z.literal("search_email"),
+      maxResults: z.number().int().min(1).max(25).default(10),
+      query: z.string().min(1).max(1_000),
+    }),
+    z.object({
+      action: z.literal("read_email_thread"),
+      threadId: z.string().min(1).max(200),
+    }),
+    z.object({
+      action: z.literal("list_calendar_events"),
+      calendarId: z.string().default("primary"),
+      maxResults: z.number().int().min(1).max(50).default(20),
+      timeMax: z.iso.datetime({ offset: true }),
+      timeMin: z.iso.datetime({ offset: true }),
+    }),
+    z.object({
+      action: z.literal("check_calendar_availability"),
+      calendars: z.array(z.string()).min(1).max(10).default(["primary"]),
+      timeMax: z.iso.datetime({ offset: true }),
+      timeMin: z.iso.datetime({ offset: true }),
+      timezone: z.string().min(1).default("UTC"),
+    }),
+    z.object({
+      action: z.literal("search_contacts"),
+      pageSize: z.number().int().min(1).max(20).default(10),
+      query: z.string().min(1).max(200),
+    }),
+  ])
+  .meta({ type: "object" });
 
 export default defineTool({
   description:

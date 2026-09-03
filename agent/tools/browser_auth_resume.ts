@@ -9,16 +9,18 @@ import {
 } from "@/db/services/browser-auth-checkpoints";
 import { scopeFromPrincipal } from "@/lib/access-scope";
 
-const inputSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("pending") }),
-  z.object({
-    action: z.literal("bind"),
-    checkpoint_id: z.uuid(),
-    worker_agent_id: z.string().trim().min(1).max(200),
-  }),
-  z.object({ action: z.literal("resume"), checkpoint_id: z.uuid() }),
-  z.object({ action: z.literal("cancel"), checkpoint_id: z.uuid() }),
-]);
+const inputSchema = z
+  .discriminatedUnion("action", [
+    z.object({ action: z.literal("pending") }),
+    z.object({
+      action: z.literal("bind"),
+      checkpoint_id: z.uuid(),
+      worker_agent_id: z.string().trim().min(1).max(200),
+    }),
+    z.object({ action: z.literal("resume"), checkpoint_id: z.uuid() }),
+    z.object({ action: z.literal("cancel"), checkpoint_id: z.uuid() }),
+  ])
+  .meta({ type: "object" });
 
 export default defineTool({
   description:
