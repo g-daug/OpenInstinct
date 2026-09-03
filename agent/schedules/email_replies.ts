@@ -15,6 +15,7 @@ import {
   completeEmailReplyWatchPoll,
   recordEmailReplyDetection,
   releaseEmailReplyWatch,
+  reserveEmailReplyWatchReauthorizationNotice,
 } from "@/db/services/email-reply-watches";
 import { env } from "@/env";
 import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
@@ -115,6 +116,12 @@ async function recoverGoogleAuthorization(
     return;
   }
 
+  const reserved = await reserveEmailReplyWatchReauthorizationNotice(
+    job,
+    GOOGLE_REAUTH_NOTICE_SENT
+  );
+  if (!reserved) return;
+
   try {
     const authorization = await startAuthorization(
       env.GOOGLE_CONNECTOR_UID,
@@ -138,7 +145,6 @@ async function recoverGoogleAuthorization(
       ].join("\n\n"),
       { auth: job.auth }
     );
-    await releaseEmailReplyWatch(job, new Error(GOOGLE_REAUTH_NOTICE_SENT));
   } catch (recoveryError) {
     console.warn("[email-replies] Google reconnection delivery failed", {
       error:
@@ -147,11 +153,5 @@ async function recoverGoogleAuthorization(
           : String(recoveryError),
       watchId: job.id,
     });
-    await releaseEmailReplyWatch(
-      job,
-      recoveryError instanceof Error
-        ? recoveryError
-        : new Error(String(recoveryError))
-    );
   }
 }

@@ -103,13 +103,40 @@ describe("email reply watches", () => {
       state: "active",
     });
 
+    const [reclaimedBob] = await watches.claimDueEmailReplyWatches({
+      leaseForMs: 300_000,
+      limit: 10,
+      now: new Date("2026-09-02T15:03:46.000Z"),
+    });
+    if (!reclaimedBob) throw new Error("Expected Bob's watch to be leased.");
+    expect(reclaimedBob).toMatchObject({ linqThreadId: "linq:bob" });
+
+    const marker = "Google authorization required; reconnect notice sent.";
     await expect(
-      watches.claimDueEmailReplyWatches({
-        leaseForMs: 300_000,
-        limit: 10,
-        now: new Date("2026-09-02T15:03:46.000Z"),
-      })
-    ).resolves.toEqual([expect.objectContaining({ linqThreadId: "linq:bob" })]);
+      watches.reserveEmailReplyWatchReauthorizationNotice(
+        reclaimedBob,
+        marker,
+        new Date("2026-09-02T15:03:47.000Z")
+      )
+    ).resolves.toBe(true);
+    await expect(
+      watches.reserveEmailReplyWatchReauthorizationNotice(
+        reclaimedBob,
+        marker,
+        new Date("2026-09-02T15:03:48.000Z")
+      )
+    ).resolves.toBe(false);
+    const reservedRows = await pgliteDatabase
+      .select()
+      .from(schema.emailReplyWatches);
+    expect(
+      reservedRows.find((row) => row.createdByUserId === bob.userId)
+    ).toMatchObject({
+      lastError: marker,
+      leaseExpiresAt: null,
+      leaseToken: null,
+      nextCheckAt: "2026-09-02T15:08:47.000Z",
+    });
 
     await watches.createEmailReplyWatch(
       owner(alice, "linq:alice"),

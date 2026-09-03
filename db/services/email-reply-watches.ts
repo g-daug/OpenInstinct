@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type { SessionAuthContext } from "eve/context";
 import type { AccessScope } from "@/lib/access-scope";
 import { db, emailReplyWatches } from "@/db";
@@ -229,6 +229,35 @@ export async function releaseEmailReplyWatch(
         eq(emailReplyWatches.state, "active")
       )
     );
+}
+
+export async function reserveEmailReplyWatchReauthorizationNotice(
+  job: ClaimedEmailReplyWatch,
+  noticeMarker: string,
+  now = new Date()
+) {
+  const rows = await db
+    .update(emailReplyWatches)
+    .set({
+      lastError: noticeMarker,
+      leaseExpiresAt: null,
+      leaseToken: null,
+      nextCheckAt: new Date(now.getTime() + RETRY_DELAY_MS).toISOString(),
+      updatedAt: now.toISOString(),
+    })
+    .where(
+      and(
+        eq(emailReplyWatches.id, job.id),
+        eq(emailReplyWatches.leaseToken, job.leaseToken),
+        eq(emailReplyWatches.state, "active"),
+        or(
+          isNull(emailReplyWatches.lastError),
+          ne(emailReplyWatches.lastError, noticeMarker)
+        )
+      )
+    )
+    .returning({ id: emailReplyWatches.id });
+  return rows.length > 0;
 }
 
 function publicWatch(row: typeof emailReplyWatches.$inferSelect) {
