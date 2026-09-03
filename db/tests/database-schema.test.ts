@@ -17,6 +17,7 @@ import {
   emailReplyWatches,
   encryptedSecrets,
   followUps,
+  googleEmailSendAuditEvents,
   linqToolConfirmations,
   session,
   settings,
@@ -52,6 +53,7 @@ describe("database schema", () => {
         emailReplyWatches,
         encryptedSecrets,
         followUps,
+        googleEmailSendAuditEvents,
         linqToolConfirmations,
         user,
         session,
@@ -78,6 +80,7 @@ describe("database schema", () => {
       "email_reply_watches",
       "encrypted_secrets",
       "follow_ups",
+      "google_email_send_audit_events",
       "linq_tool_confirmations",
       "user",
       "session",
@@ -114,6 +117,17 @@ describe("database schema", () => {
         "user_id",
       ]);
     }
+
+    const auditMembership = getTableConfig(
+      googleEmailSendAuditEvents
+    ).foreignKeys[0]?.reference();
+    expect(auditMembership?.columns.map((column) => column.name)).toEqual([
+      "workspace_id",
+      "requested_by_user_id",
+    ]);
+    expect(
+      auditMembership?.foreignColumns.map((column) => column.name)
+    ).toEqual(["workspace_id", "user_id"]);
   });
 
   it("keeps every workspace-owned table connected to the workspace root", () => {
@@ -206,6 +220,7 @@ describe("migration deployment policy", () => {
         "dropped-thread-monitors",
         "email-reply-watches",
         "follow-ups",
+        "google-email-send-audit",
         "linq-tool-confirmations",
         "scope",
         "secrets",

@@ -2,8 +2,18 @@ import { createHash } from "node:crypto";
 import * as CalendarApi from "@googleapis/calendar";
 import * as GmailApi from "@googleapis/gmail";
 import * as PeopleApi from "@googleapis/people";
+import type * as VercelConnect from "@vercel/connect";
 import type { ToolContext } from "eve/tools";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const connectMocks = vi.hoisted(() => ({
+  getToken: vi.fn<() => Promise<string>>(),
+}));
+
+vi.mock("@vercel/connect", async (importOriginal) => ({
+  ...(await importOriginal<typeof VercelConnect>()),
+  getToken: connectMocks.getToken,
+}));
 import {
   createCalendarEvent,
   searchGoogleContacts,
@@ -23,6 +33,9 @@ const setCredentialsMock = vi.spyOn(
   "setCredentials"
 );
 
+beforeEach(() =>
+  connectMocks.getToken.mockResolvedValue("google-access-token")
+);
 afterEach(() => vi.clearAllMocks());
 
 describe("generated Google Workspace clients", () => {
@@ -34,7 +47,8 @@ describe("generated Google Workspace clients", () => {
       error
     );
 
-    expect(ctx.getToken).toHaveBeenCalledOnce();
+    expect(connectMocks.getToken).toHaveBeenCalledOnce();
+    expect(ctx.getToken).not.toHaveBeenCalled();
     expect(setCredentialsMock).toHaveBeenCalledWith({
       access_token: "google-access-token",
     });
@@ -200,7 +214,15 @@ function toolContext() {
     getToken,
     requireAuth,
     session: {
-      auth: { current: null, initiator: null },
+      auth: {
+        current: {
+          attributes: { workspaceId: "workspace-1" },
+          authenticator: "test",
+          principalId: "better-auth:user-1",
+          principalType: "user",
+        },
+        initiator: null,
+      },
       id: "session-1",
       turn: { id: "turn-1", sequence: 0 },
     },

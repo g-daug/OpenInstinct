@@ -20,6 +20,7 @@ describe("email reply watches", () => {
     databases.push(client);
     await applyMigration(client, "0000_fluffy_the_spike.sql");
     await applyMigration(client, "0009_fine_magik.sql");
+    await applyMigration(client, "0013_eager_pepper_potts.sql");
     const pgliteDatabase = drizzle(client, { schema });
     // SAFETY: The test swaps only the database driver while retaining the shared Drizzle schema.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- PGlite implements the query-builder surface used by this service.
@@ -38,6 +39,7 @@ describe("email reply watches", () => {
       {
         emailSubject: "Dinner tonight",
         gmailThreadId: "gmail-thread",
+        googleAccount: "dedicated",
         sentMessageId: "gmail-sent-alice",
       },
       now
@@ -47,6 +49,7 @@ describe("email reply watches", () => {
       {
         emailSubject: "Dinner tonight",
         gmailThreadId: "gmail-thread",
+        googleAccount: "personal",
         sentMessageId: "gmail-sent-bob",
       },
       now
@@ -70,6 +73,7 @@ describe("email reply watches", () => {
     if (!aliceJob || !bobJob) throw new Error("Expected both leased watches.");
     expect(aliceJob).toMatchObject({
       gmailThreadId: "gmail-thread",
+      googleAccount: "dedicated",
       linqThreadId: "linq:alice",
       sentMessageId: "gmail-sent-alice",
     });
@@ -143,6 +147,7 @@ describe("email reply watches", () => {
       {
         emailSubject: "Updated dinner",
         gmailThreadId: "gmail-thread",
+        googleAccount: "personal",
         sentMessageId: "gmail-sent-alice-2",
       },
       new Date("2026-09-02T16:00:00.000Z")
@@ -153,6 +158,7 @@ describe("email reply watches", () => {
       .where(eq(schema.emailReplyWatches.createdByUserId, alice.userId));
     expect(reset).toMatchObject({
       emailSubject: "Updated dinner",
+      googleAccount: "personal",
       notifiedAt: null,
       replyMessageId: null,
       sentMessageId: "gmail-sent-alice-2",

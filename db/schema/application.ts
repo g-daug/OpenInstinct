@@ -466,6 +466,7 @@ export const emailReplyWatches = pgTable(
     issuer: text("issuer"),
     subject: text("subject"),
     phoneNumber: text("phone_number"),
+    googleAccount: text("google_account").notNull().default("dedicated"),
     gmailThreadId: text("gmail_thread_id").notNull(),
     sentMessageId: text("sent_message_id").notNull(),
     emailSubject: text("email_subject").notNull(),
@@ -496,6 +497,10 @@ export const emailReplyWatches = pgTable(
       "email_reply_watches_state_check",
       sql`${table.state} IN ('active', 'notified', 'expired', 'cancelled')`
     ),
+    check(
+      "email_reply_watches_google_account_check",
+      sql`${table.googleAccount} IN ('dedicated', 'personal')`
+    ),
     uniqueIndex("email_reply_watches_thread_uidx").on(
       table.workspaceId,
       table.createdByUserId,
@@ -506,6 +511,51 @@ export const emailReplyWatches = pgTable(
       table.state,
       table.nextCheckAt,
       table.leaseExpiresAt
+    ),
+  ]
+);
+
+export const googleEmailSendAuditEvents = pgTable(
+  "google_email_send_audit_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    requestedByUserId: text("requested_by_user_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    requestKey: text("request_key").notNull(),
+    googleAccount: text("google_account").notNull(),
+    recipients: text("recipients").notNull(),
+    emailSubject: text("email_subject").notNull(),
+    status: text("status").notNull().default("pending"),
+    gmailMessageId: text("gmail_message_id"),
+    gmailThreadId: text("gmail_thread_id"),
+    error: text("error"),
+    createdAt: text("created_at").notNull(),
+    completedAt: text("completed_at"),
+  },
+  (table) => [
+    foreignKey({
+      name: "google_email_send_audit_events_membership_fkey",
+      columns: [table.workspaceId, table.requestedByUserId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+    }).onDelete("cascade"),
+    check(
+      "google_email_send_audit_events_account_check",
+      sql`${table.googleAccount} IN ('dedicated', 'personal')`
+    ),
+    check(
+      "google_email_send_audit_events_status_check",
+      sql`${table.status} IN ('pending', 'sent', 'failed')`
+    ),
+    uniqueIndex("google_email_send_audit_events_request_uidx").on(
+      table.requestKey
+    ),
+    index("google_email_send_audit_events_requester_idx").on(
+      table.requestedByUserId,
+      table.createdAt.desc().nullsFirst()
     ),
   ]
 );

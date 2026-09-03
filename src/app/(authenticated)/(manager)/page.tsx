@@ -7,10 +7,23 @@ import {
 } from "@vercel/connect";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getGatewayModel } from "@/db/services/settings";
 import { readDroppedThreadMonitor } from "@/db/services/dropped-thread-monitors";
+import { listGoogleEmailSendAuditEvents } from "@/db/services/google-email-send-audit";
 import { env } from "@/env";
-import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
+import {
+  type GoogleAccountMode,
+  googleWorkspaceTokenParams,
+  sharedGoogleWorkspaceAccess,
+} from "@/lib/google-workspace";
 import { requireRequestScope } from "@/lib/request-scope";
 import { GoogleWorkspaceAction } from "./_components/google-workspace-action";
 import { ChannelsSection } from "./_components/channels-section";
@@ -20,12 +33,22 @@ import { ModelSelector } from "./_components/model-selector";
 export default async function Page({ searchParams }: PageProps<"/">) {
   const google = (await searchParams).google;
   const scope = await requireRequestScope();
-  const [googleWorkspace, gatewayModel, droppedThreadMonitor] =
-    await Promise.all([
-      readGoogleWorkspaceConnection(scope.userId),
-      getGatewayModel(scope),
-      readDroppedThreadMonitor(scope),
-    ]);
+  const sharedGoogleAccess = sharedGoogleWorkspaceAccess(scope.userId);
+  const [
+    dedicatedGoogle,
+    personalGoogle,
+    gatewayModel,
+    droppedThreadMonitor,
+    emailAuditEvents,
+  ] = await Promise.all([
+    readGoogleWorkspaceConnection(scope.userId, "dedicated"),
+    readGoogleWorkspaceConnection(scope.userId, "personal"),
+    getGatewayModel(scope),
+    readDroppedThreadMonitor(scope),
+    sharedGoogleAccess === "admin"
+      ? listGoogleEmailSendAuditEvents(scope.userId)
+      : Promise.resolve([]),
+  ]);
   const browserReady = true;
   const imageStorageReady = Boolean(
     env.BLOB_STORE_ID ?? env.BLOB_READ_WRITE_TOKEN
@@ -50,8 +73,15 @@ export default async function Page({ searchParams }: PageProps<"/">) {
         linqConfigured={env.LINQ_CONNECTOR !== undefined}
         linqPhoneNumber={env.LINQ_PHONE_NUMBER}
       />
-      <GoogleWorkspaceSection connection={googleWorkspace} />
-      {googleWorkspace.state === "connected" &&
+      <GoogleWorkspaceSection
+        access={sharedGoogleAccess}
+        dedicatedConnection={dedicatedGoogle}
+        personalConnection={personalGoogle}
+      />
+      {sharedGoogleAccess === "admin" ? (
+        <GoogleEmailAuditSection events={emailAuditEvents} />
+      ) : null}
+      {dedicatedGoogle.state === "connected" &&
       droppedThreadMonitor === undefined &&
       env.LINQ_CONNECTOR !== undefined &&
       env.LINQ_PHONE_NUMBER ? (
@@ -98,27 +128,128 @@ export default async function Page({ searchParams }: PageProps<"/">) {
   );
 }
 
-function GoogleWorkspaceSection({
-  connection,
+function GoogleEmailAuditSection({
+  events,
 }: {
-  readonly connection?: GoogleWorkspaceConnection;
+  readonly events: Awaited<ReturnType<typeof listGoogleEmailSendAuditEvents>>;
 }) {
-  const state = connection?.state;
-  const description =
-    state === "connected"
-      ? (connection?.accountLabel ?? "Gmail, Calendar, and Contacts connected.")
-      : state === "unavailable"
-        ? "Attach a Vercel Connect Google OAuth connector to enable this."
-        : "Gmail, Calendar, and Contacts through your Google account.";
+  return (
+    <WorkspaceSection headingId="email-audit-heading" title="Email audit">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Requested by</TableHead>
+            <TableHead>Sender</TableHead>
+            <TableHead>Recipients</TableHead>
+            <TableHead>Subject</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Requested</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {events.length ? (
+            events.map((event) => (
+              <TableRow key={event.id}>
+                <TableCell>
+                  {event.requesterName ??
+                    event.requesterEmail ??
+                    event.requestedByUserId}
+                </TableCell>
+                <TableCell>{event.googleAccount}</TableCell>
+                <TableCell>{auditRecipientLabel(event.recipients)}</TableCell>
+                <TableCell>{event.emailSubject}</TableCell>
+                <TableCell>{event.status}</TableCell>
+                <TableCell>
+                  {new Date(event.createdAt).toLocaleString()}
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={6} variant="empty">
+                No email sends recorded yet.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </WorkspaceSection>
+  );
+}
+
+function auditRecipientLabel(value: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return "Unavailable";
+  }
+  const recipients = z
+    .object({
+      bcc: z.array(z.string()),
+      cc: z.array(z.string()),
+      to: z.array(z.string()),
+    })
+    .safeParse(parsed);
+  if (!recipients.success) return "Unavailable";
+  return [
+    ...recipients.data.to,
+    ...recipients.data.cc,
+    ...recipients.data.bcc,
+  ].join(", ");
+}
+
+function GoogleWorkspaceSection({
+  access,
+  dedicatedConnection,
+  personalConnection,
+}: {
+  readonly access: "admin" | "denied" | "member";
+  readonly dedicatedConnection?: GoogleWorkspaceConnection;
+  readonly personalConnection?: GoogleWorkspaceConnection;
+}) {
+  const dedicatedDescription = connectionDescription(
+    dedicatedConnection,
+    access === "denied"
+      ? "Your account is not allowed to use Lever's dedicated mailbox."
+      : "Lever's default sender for approved users."
+  );
+  const personalDescription = connectionDescription(
+    personalConnection,
+    "Used only when you explicitly ask Lever to send from your account."
+  );
 
   return (
     <WorkspaceSection headingId="connections-heading" title="Connections">
       <div className="divide-y divide-border/50 border-y border-border/50">
         <ConnectorRow
-          action={<GoogleWorkspaceAction state={state} />}
-          description={description}
+          action={
+            access === "denied" ? (
+              <span className="type-caption text-muted-foreground">
+                Not allowed
+              </span>
+            ) : (
+              <GoogleWorkspaceAction
+                account="dedicated"
+                canManage={access === "admin"}
+                state={dedicatedConnection?.state}
+              />
+            )
+          }
+          description={dedicatedDescription}
           icon={<MailIcon />}
-          label="Google Workspace"
+          label="Dedicated Lever mailbox"
+        />
+        <ConnectorRow
+          action={
+            <GoogleWorkspaceAction
+              account="personal"
+              state={personalConnection?.state}
+            />
+          }
+          description={personalDescription}
+          icon={<MailIcon />}
+          label="Personal Google account"
         />
       </div>
     </WorkspaceSection>
@@ -131,12 +262,13 @@ type GoogleWorkspaceConnection = {
 };
 
 async function readGoogleWorkspaceConnection(
-  userId: string
+  userId: string,
+  account: GoogleAccountMode
 ): Promise<GoogleWorkspaceConnection> {
   try {
     const response = await getTokenResponse(
       env.GOOGLE_CONNECTOR_UID,
-      googleWorkspaceTokenParams(userId),
+      googleWorkspaceTokenParams(userId, account),
       { forceRefresh: true }
     );
     const claims = z
@@ -156,6 +288,21 @@ async function readGoogleWorkspaceConnection(
     }
     return { accountLabel: null, state: "unavailable" };
   }
+}
+
+function connectionDescription(
+  connection: GoogleWorkspaceConnection | undefined,
+  disconnectedDescription: string
+) {
+  if (connection?.state === "connected") {
+    return (
+      connection.accountLabel ?? "Gmail, Calendar, and Contacts connected."
+    );
+  }
+  if (connection?.state === "unavailable") {
+    return "Attach a Vercel Connect Google OAuth connector to enable this.";
+  }
+  return disconnectedDescription;
 }
 
 function WorkspaceSection({

@@ -18,7 +18,11 @@ import {
   reserveEmailReplyWatchReauthorizationNotice,
 } from "@/db/services/email-reply-watches";
 import { env } from "@/env";
-import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
+import {
+  googleWorkspaceTokenParams,
+  sharedGoogleWorkspaceAccess,
+  sharedGoogleWorkspaceEnabled,
+} from "@/lib/google-workspace";
 
 const GOOGLE_REAUTH_NOTICE_SENT =
   "Google authorization required; reconnect notice sent.";
@@ -39,7 +43,8 @@ export default defineSchedule({
             try {
               const thread = await readGmailThreadForUser(
                 job.createdByUserId,
-                job.gmailThreadId
+                job.gmailThreadId,
+                job.googleAccount
               );
               const reply = findReplyAfterSentMessage(
                 thread,
@@ -123,9 +128,23 @@ async function recoverGoogleAuthorization(
   if (!reserved) return;
 
   try {
+    if (
+      job.googleAccount === "dedicated" &&
+      sharedGoogleWorkspaceEnabled() &&
+      sharedGoogleWorkspaceAccess(job.createdByUserId) !== "admin"
+    ) {
+      await to(linq, {
+        adapterName: "linq",
+        threadId: job.linqThreadId,
+      }).send(
+        "Send exactly this notice once: Lever's dedicated Google account needs to be reconnected by its administrator. Reply monitoring will resume automatically after that.",
+        { auth: job.auth }
+      );
+      return;
+    }
     const authorization = await startAuthorization(
       env.GOOGLE_CONNECTOR_UID,
-      googleWorkspaceTokenParams(job.createdByUserId),
+      googleWorkspaceTokenParams(job.createdByUserId, job.googleAccount),
       { deviceCode: true, prompt: "consent" }
     );
     const reconnectDetails = [

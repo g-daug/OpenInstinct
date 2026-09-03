@@ -1,5 +1,6 @@
 import { gateway } from "ai";
 import { revokeToken, startAuthorization } from "@vercel/connect";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { listBrowserTraces } from "@/db/services/browser-traces";
 import { saveChat } from "@/db/services/chats";
@@ -9,8 +10,11 @@ import type { AccessScope } from "@/lib/access-scope";
 import { saveChatSchema } from "@/lib/chat";
 import { env } from "@/env";
 import {
+  GOOGLE_ACCOUNT_MODES,
+  type GoogleAccountMode,
   googleWorkspaceSubject,
   googleWorkspaceTokenParams,
+  sharedGoogleWorkspaceAccess,
 } from "@/lib/google-workspace";
 import { vaultCreateItemSchema, vaultImportItemsSchema } from "@/lib/vault";
 import { createTRPCRouter, protectedProcedure } from "./init";
@@ -23,20 +27,39 @@ export const appRouter = createTRPCRouter({
   },
   googleWorkspace: {
     update: protectedProcedure
-      .input(z.enum(["connect", "disconnect"]))
+      .input(
+        z.object({
+          account: z.enum(GOOGLE_ACCOUNT_MODES),
+          action: z.enum(["connect", "disconnect"]),
+        })
+      )
       .mutation(async ({ ctx, input }) => {
-        if (input === "disconnect") {
-          await revokeToken(env.GOOGLE_CONNECTOR_UID, {
-            subject: googleWorkspaceSubject(ctx.scope.userId),
+        if (
+          input.account === "dedicated" &&
+          sharedGoogleWorkspaceAccess(ctx.scope.userId) !== "admin"
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "Only the dedicated Google account administrator can change this connection.",
           });
-          return { redirectTo: "/?google=disconnected" };
+        }
+        if (input.action === "disconnect") {
+          await revokeToken(env.GOOGLE_CONNECTOR_UID, {
+            subject: googleWorkspaceSubject(ctx.scope.userId, input.account),
+          });
+          return {
+            redirectTo: `/?google=disconnected&account=${input.account}`,
+          };
         }
 
         const callbackUrl = new URL("/", ctx.origin);
         callbackUrl.searchParams.set("google", "connected");
+        callbackUrl.searchParams.set("account", input.account);
         return {
           redirectTo: await startGoogleWorkspaceAuthorization(
             ctx.scope,
+            input.account,
             callbackUrl.toString()
           ),
         };
@@ -78,11 +101,12 @@ export type AppRouter = typeof appRouter;
 
 async function startGoogleWorkspaceAuthorization(
   scope: AccessScope,
+  account: GoogleAccountMode,
   callbackUrl: string
 ) {
   const authorization = await startAuthorization(
     env.GOOGLE_CONNECTOR_UID,
-    googleWorkspaceTokenParams(scope.userId),
+    googleWorkspaceTokenParams(scope.userId, account),
     { callbackUrl, expiresInMs: 10 * 60_000 }
   );
   return authorization.url;

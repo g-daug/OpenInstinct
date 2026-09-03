@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseCalendarAvailability } from "@/agent/lib/google-workspace/calendar";
-import { googleWorkspaceAuthOptions } from "@/agent/lib/google-workspace/client";
+import {
+  dedicatedGoogleWorkspaceAuthOptions,
+  personalGoogleWorkspaceAuthOptions,
+} from "@/agent/lib/google-workspace/client";
 import {
   findReplyAfterSentMessage,
   gmailUpdateLabels,
@@ -26,14 +29,23 @@ describe("Google Workspace", () => {
       scopes: [...googleWorkspaceScopes],
       subject: googleWorkspaceSubject(userId),
     });
-    expect(googleWorkspaceAuthOptions.tokenParams).toEqual({
+    expect(dedicatedGoogleWorkspaceAuthOptions.tokenParams).toEqual({
       scopes: [...googleWorkspaceScopes],
     });
-    expect(googleWorkspaceAuthOptions.validate).toBe(true);
+    expect(dedicatedGoogleWorkspaceAuthOptions.validate).toBe(true);
+    expect(personalGoogleWorkspaceAuthOptions.tokenParams).toEqual({
+      scopes: [...googleWorkspaceScopes],
+    });
+    expect(personalGoogleWorkspaceAuthOptions.validate).toBe(true);
   });
 
   it("uses a user-scoped connector subject", () => {
     expect(googleWorkspaceSubject(userId)).toEqual({
+      id: userId,
+      issuer: "openinstinct",
+      type: "user",
+    });
+    expect(googleWorkspaceSubject(userId, "personal")).toEqual({
       id: userId,
       issuer: "openinstinct",
       type: "user",

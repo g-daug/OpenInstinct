@@ -4,7 +4,10 @@ import { getToken } from "@vercel/connect";
 import type { ToolContext } from "eve/tools";
 import { z } from "zod";
 import { env } from "@/env";
-import { googleWorkspaceTokenParams } from "@/lib/google-workspace";
+import {
+  type GoogleAccountMode,
+  googleWorkspaceTokenParams,
+} from "@/lib/google-workspace";
 import { withGoogleAuth } from "./client";
 
 type GmailMessage = gmail_v1.Schema$Message;
@@ -78,10 +81,14 @@ export async function readGmailThread(ctx: ToolContext, threadId: string) {
   });
 }
 
-export async function readGmailThreadForUser(userId: string, threadId: string) {
+export async function readGmailThreadForUser(
+  userId: string,
+  threadId: string,
+  account: GoogleAccountMode = "dedicated"
+) {
   const token = await getToken(
     env.GOOGLE_CONNECTOR_UID,
-    googleWorkspaceTokenParams(userId)
+    googleWorkspaceTokenParams(userId, account)
   );
   const authClient = new auth.OAuth2();
   authClient.setCredentials({ access_token: token });
@@ -114,7 +121,8 @@ export async function updateGmail(
 
 export async function sendGmail(
   ctx: ToolContext,
-  payload: z.infer<typeof gmailSendSchema>
+  payload: z.infer<typeof gmailSendSchema>,
+  account: GoogleAccountMode = "dedicated"
 ) {
   const stableId = createHash("sha256")
     .update(`${ctx.session.id}:${ctx.callId}`)
@@ -144,19 +152,23 @@ export async function sendGmail(
     `${headers.join("\r\n")}\r\n\r\n${payload.body}`,
     "utf8"
   ).toString("base64url");
-  return withGmail(ctx, async (client) => {
-    const requestBody = payload.threadId
-      ? { raw, threadId: payload.threadId }
-      : { raw };
-    const { data } = await client.users.messages.send(
-      {
-        requestBody,
-        userId: "me",
-      },
-      { signal: ctx.abortSignal }
-    );
-    return data;
-  });
+  return withGmail(
+    ctx,
+    async (client) => {
+      const requestBody = payload.threadId
+        ? { raw, threadId: payload.threadId }
+        : { raw };
+      const { data } = await client.users.messages.send(
+        {
+          requestBody,
+          userId: "me",
+        },
+        { signal: ctx.abortSignal }
+      );
+      return data;
+    },
+    account
+  );
 }
 
 export function findReplyAfterSentMessage(
@@ -314,9 +326,14 @@ function safeHeader(value: string) {
 
 function withGmail<T>(
   ctx: ToolContext,
-  execute: (client: ReturnType<typeof gmail>) => Promise<T>
+  execute: (client: ReturnType<typeof gmail>) => Promise<T>,
+  account: GoogleAccountMode = "dedicated"
 ) {
-  return withGoogleAuth(ctx, (auth) => execute(gmail({ auth, version: "v1" })));
+  return withGoogleAuth(
+    ctx,
+    (auth) => execute(gmail({ auth, version: "v1" })),
+    account
+  );
 }
 
 function decodeBase64Url(value: string) {

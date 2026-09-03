@@ -84,6 +84,8 @@ export const env = createEnv({
     BLOB_READ_WRITE_TOKEN: requiredValue.optional(),
     BLOB_STORE_ID: requiredValue.optional(),
     GOOGLE_CONNECTOR_UID: requiredValue.default("google/open-instinct"),
+    GOOGLE_SHARED_ADMIN_USER_ID: requiredValue.optional(),
+    GOOGLE_SHARED_ALLOWED_USER_IDS: requiredValue.optional(),
     LINEAR_CONNECTOR_UID: requiredValue.default("linear/open"),
     LINQ_CONNECTOR: requiredValue.optional(),
     LINQ_PHONE_NUMBER: requiredValue

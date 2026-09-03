@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type { SessionAuthContext } from "eve/context";
 import type { AccessScope } from "@/lib/access-scope";
+import {
+  type GoogleAccountMode,
+  parseGoogleAccountMode,
+} from "@/lib/google-workspace";
 import { db, emailReplyWatches } from "@/db";
 
 const FIRST_CHECK_DELAY_MS = 60_000;
@@ -21,6 +25,7 @@ export interface ClaimedEmailReplyWatch {
   readonly createdByUserId: string;
   readonly emailSubject: string;
   readonly gmailThreadId: string;
+  readonly googleAccount: GoogleAccountMode;
   readonly id: string;
   readonly leaseToken: string;
   readonly linqThreadId: string;
@@ -35,6 +40,7 @@ export async function createEmailReplyWatch(
   input: {
     readonly emailSubject: string;
     readonly gmailThreadId: string;
+    readonly googleAccount: GoogleAccountMode;
     readonly sentMessageId: string;
   },
   now = new Date()
@@ -46,6 +52,7 @@ export async function createEmailReplyWatch(
     emailSubject: input.emailSubject,
     expiresAt: new Date(now.getTime() + WATCH_DURATION_MS).toISOString(),
     gmailThreadId: input.gmailThreadId,
+    googleAccount: input.googleAccount,
     issuer: owner.auth.issuer ?? null,
     lastCheckedAt: null,
     lastError: null,
@@ -294,6 +301,7 @@ function claimedWatch(
     createdByUserId: row.createdByUserId,
     emailSubject: row.emailSubject,
     gmailThreadId: row.gmailThreadId,
+    googleAccount: parseGoogleAccountMode(row.googleAccount),
     id: row.id,
     leaseToken,
     linqThreadId: row.linqThreadId,

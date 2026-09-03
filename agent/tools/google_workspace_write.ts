@@ -17,7 +17,13 @@ import {
   type LinqConfirmedAction,
 } from "@/db/services/linq-tool-confirmations";
 import { createEmailReplyWatch } from "@/db/services/email-reply-watches";
+import {
+  beginGoogleEmailSendAudit,
+  completeGoogleEmailSendAudit,
+  failGoogleEmailSendAudit,
+} from "@/db/services/google-email-send-audit";
 import { scopeFromPrincipal } from "@/lib/access-scope";
+import { GOOGLE_ACCOUNT_MODES } from "@/lib/google-workspace";
 
 const inputSchema = z.discriminatedUnion("action", [
   z.object({
@@ -28,6 +34,12 @@ const inputSchema = z.discriminatedUnion("action", [
   gmailSendSchema.extend({
     action: z.literal("send_email"),
     confirmationId: z.string().min(1).max(500).optional(),
+    sender: z
+      .enum(GOOGLE_ACCOUNT_MODES)
+      .default("dedicated")
+      .describe(
+        "Use dedicated by default. Use personal only when the user explicitly asks to send from their personal Google account."
+      ),
   }),
   calendarEventSchema.extend({
     action: z.literal("create_calendar_event"),
@@ -64,7 +76,7 @@ export default defineTool({
       (session.auth.current ?? session.auth.initiator)?.attributes
     ),
   description:
-    "Change the authenticated user's Google Workspace. Reversible Gmail label updates act on exact message IDs. Sending email or creating a confirmed calendar event requires user approval. This tool cannot delete mail, change account settings, or edit contacts.",
+    "Change Google Workspace. Email is sent from Lever's dedicated mailbox by default; use the personal sender only when the user explicitly asks for their personal Google account. Reversible Gmail label updates act on exact message IDs. Sending email or creating a confirmed calendar event requires user approval. This tool cannot delete mail, change account settings, or edit contacts.",
   inputSchema,
   async execute(input, ctx) {
     switch (input.action) {
@@ -79,16 +91,62 @@ export default defineTool({
       case "send_email": {
         const confirmation = await confirmLinqWrite(input, ctx);
         if (confirmation) return confirmation;
-        const sent = await sendGmail(ctx, input);
+        const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
+        if (!caller)
+          throw new Error("Sending email requires a signed-in user.");
+        const scope = scopeFromPrincipal(caller);
+        const requestKey = `${ctx.session.id}:${ctx.callId}`;
+        await beginGoogleEmailSendAudit({
+          account: input.sender,
+          bcc: input.bcc,
+          cc: input.cc,
+          requestKey,
+          scope,
+          sessionId: ctx.session.id,
+          subject: input.subject,
+          to: input.to,
+        });
+        let sent: Awaited<ReturnType<typeof sendGmail>>;
+        try {
+          sent = await sendGmail(ctx, input, input.sender);
+        } catch (error) {
+          await failGoogleEmailSendAudit(requestKey, error).catch(
+            (cause: unknown) => {
+              console.warn("[google-email-audit] failed to record send error", {
+                error: cause instanceof Error ? cause.message : String(cause),
+                requestKey,
+              });
+            }
+          );
+          throw error;
+        }
+        const auditRecorded = await completeGoogleEmailSendAudit(requestKey, {
+          messageId: sent.id,
+          threadId: sent.threadId,
+        })
+          .then(() => true)
+          .catch((cause: unknown) => {
+            console.warn(
+              "[google-email-audit] failed to complete send record",
+              {
+                error: cause instanceof Error ? cause.message : String(cause),
+                requestKey,
+              }
+            );
+            return false;
+          });
         const replyMonitoring = await createReplyWatchAfterLinqSend(
           input.subject,
+          input.sender,
           sent,
           ctx
         );
         return {
           action: input.action,
+          auditRecorded,
           messageId: sent.id,
           replyMonitoring,
+          sender: input.sender,
           sent: true,
           threadId: sent.threadId,
         };
@@ -108,6 +166,7 @@ export default defineTool({
 
 async function createReplyWatchAfterLinqSend(
   emailSubject: string,
+  googleAccount: (typeof GOOGLE_ACCOUNT_MODES)[number],
   sent: { readonly id?: null | string; readonly threadId?: null | string },
   ctx: ToolContext
 ) {
@@ -126,6 +185,7 @@ async function createReplyWatchAfterLinqSend(
     {
       emailSubject,
       gmailThreadId: sent.threadId,
+      googleAccount,
       sentMessageId: sent.id,
     }
   );

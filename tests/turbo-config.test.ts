@@ -6,6 +6,7 @@ const applicationEnvironment = [
   "BETTER_AUTH_*",
   "BLOB_*",
   "DATABASE_URL",
+  "GOOGLE_SHARED_*",
   "*_CONNECTOR_UID",
   "KERNEL_*",
   "LINQ_*",
