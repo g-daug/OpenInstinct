@@ -127,6 +127,12 @@ describe("root and worker capability boundaries", () => {
       "native `final_output` tool exactly once"
     );
     expect(workerInstructions).toContain(
+      "never send them as ordinary assistant output"
+    );
+    expect(workerInstructions).toContain(
+      "A JSON-shaped assistant message does not satisfy the output contract"
+    );
+    expect(workerInstructions).toContain(
       "Never use the browser for general web search"
     );
     expect(workerInstructions).toContain(
@@ -168,6 +174,9 @@ describe("root and worker capability boundaries", () => {
     );
     expect(rootInstructions).toContain(
       "calling Eve's native `final_output` tool exactly once"
+    );
+    expect(rootInstructions).toContain(
+      "A JSON-shaped assistant message is not a substitute for the tool call"
     );
     expect(workerConfig).toContain("outputSchema: taskCompletionSchema");
     expect(workerConfig).toContain(
