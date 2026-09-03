@@ -8,6 +8,7 @@ import linq from "../channels/linq-v2";
 import { sendLinqText } from "@/auth/linq";
 import {
   findReplyAfterSentMessage,
+  formatEmailReplyNotification,
   readGmailThreadForUser,
 } from "@/agent/lib/google-workspace/gmail";
 import {
@@ -61,9 +62,11 @@ export default defineSchedule({
                 replyMessageId: reply.messageId,
               });
               if (!recorded) return;
-              const replyFrom = reply.from ?? "The recipient";
-              const emailSubject = reply.subject ?? job.emailSubject;
-              const notification = `${replyFrom} replied to “${emailSubject}”:\n\n“${reply.excerpt}”`;
+              const notification = formatEmailReplyNotification({
+                excerpt: reply.excerpt,
+                from: reply.from,
+                subject: reply.subject ?? job.emailSubject,
+              });
               if (job.phoneNumber && env.LINQ_CONNECTOR) {
                 await sendLinqText({
                   connector: env.LINQ_CONNECTOR,

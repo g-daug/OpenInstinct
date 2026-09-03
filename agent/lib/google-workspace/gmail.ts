@@ -198,10 +198,23 @@ export function findReplyAfterSentMessage(
           const internalDate = Number(message.internalDate);
           return Number.isFinite(internalDate) && internalDate > sentAtMs;
         });
-  const reply = candidates.findLast(
-    (message) =>
-      message.id !== null && !message.labels.some((label) => label === "SENT")
-  );
+  const sentFrom =
+    baselineIndex >= 0
+      ? mailboxAddress(thread.messages[baselineIndex]?.from)
+      : null;
+  const reply = candidates.find((message) => {
+    if (
+      message.id === null ||
+      message.labels.some((label) => label === "SENT")
+    ) {
+      return false;
+    }
+
+    const candidateFrom = mailboxAddress(message.from);
+    return (
+      sentFrom === null || candidateFrom === null || candidateFrom !== sentFrom
+    );
+  });
   return reply?.id
     ? {
         date: reply.date,
@@ -213,14 +226,20 @@ export function findReplyAfterSentMessage(
     : undefined;
 }
 
+export function formatEmailReplyNotification(reply: {
+  readonly excerpt: string;
+  readonly from: string | null;
+  readonly subject: string;
+}) {
+  const replyFrom = reply.from ?? "The recipient";
+  return `Email reply\n${replyFrom} replied to “${reply.subject}”:\n\n“${reply.excerpt}”`;
+}
+
 export function replyExcerpt(value: string, maxLength = 500) {
-  const unquoted = value
-    .replace(/\r\n?/gu, "\n")
-    .split(
-      /\n(?:On .+ wrote:|From:\s.+|-----Original Message-----)(?:\n|$)/iu,
-      1
-    )[0]
-    ?.split("\n")
+  const normalized = decodeHtmlEntities(value).replace(/\r\n?/gu, "\n");
+  const unquoted = normalized
+    .slice(0, quotedReplyStart(normalized))
+    .split("\n")
     .filter((line) => !/^\s*>/u.test(line))
     .join(" ")
     .replace(/\s+/gu, " ")
@@ -228,6 +247,66 @@ export function replyExcerpt(value: string, maxLength = 500) {
   if (!unquoted) return "Reply text was unavailable.";
   if (unquoted.length <= maxLength) return unquoted;
   return `${unquoted.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+}
+
+function mailboxAddress(value: string | null | undefined) {
+  if (!value) return null;
+  const decoded = decodeHtmlEntities(value);
+  const angleAddress = /<([^<>\s]+@[^<>\s]+)>/u.exec(decoded)?.[1];
+  const bareAddress = /\b[^\s<>@]+@[^\s<>@]+\b/u.exec(decoded)?.[0];
+  return (angleAddress ?? bareAddress)?.toLowerCase() ?? null;
+}
+
+function quotedReplyStart(value: string) {
+  const markers = [
+    /\n\s*On\b[\s\S]*?\bwrote:/iu,
+    /\s+On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b[\s\S]*?\bwrote:/iu,
+    /\n\s*From:\s/iu,
+    /\s*-{2,}\s*Original Message\s*-{2,}/iu,
+  ];
+  return markers.reduce((earliest, marker) => {
+    const index = marker.exec(value)?.index;
+    return index === undefined ? earliest : Math.min(earliest, index);
+  }, value.length);
+}
+
+function decodeHtmlEntities(value: string) {
+  return value.replace(
+    /&(?:#(\d+)|#x([\da-f]+)|([a-z]+));/giu,
+    (
+      match,
+      decimal: string | undefined,
+      hexadecimal: string | undefined,
+      named: string | undefined
+    ) => {
+      if (decimal || hexadecimal) {
+        const codePoint = Number.parseInt(
+          decimal ?? hexadecimal ?? "",
+          decimal ? 10 : 16
+        );
+        return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+          ? String.fromCodePoint(codePoint)
+          : match;
+      }
+      switch (named?.toLowerCase()) {
+        case "amp":
+          return "&";
+        case "apos":
+        case "#39":
+          return "'";
+        case "gt":
+          return ">";
+        case "lt":
+          return "<";
+        case "nbsp":
+          return " ";
+        case "quot":
+          return '"';
+        default:
+          return match;
+      }
+    }
+  );
 }
 
 export function gmailUpdateLabels(action: GmailUpdateAction) {

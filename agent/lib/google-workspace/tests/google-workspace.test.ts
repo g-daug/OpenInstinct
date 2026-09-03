@@ -6,6 +6,7 @@ import {
 } from "@/agent/lib/google-workspace/client";
 import {
   findReplyAfterSentMessage,
+  formatEmailReplyNotification,
   gmailUpdateLabels,
   replyExcerpt,
 } from "@/agent/lib/google-workspace/gmail";
@@ -126,6 +127,54 @@ describe("Google Workspace", () => {
     expect(replyExcerpt("abcdef", 5)).toBe("abcd…");
     expect(replyExcerpt("> quoted text only")).toBe(
       "Reply text was unavailable."
+    );
+    expect(replyExcerpt("Thanks &amp; talk soon.")).toBe("Thanks & talk soon.");
+    expect(
+      replyExcerpt(
+        "Doing well, thanks! On Thu, Sep 3, 2026 at 1:45 PM, Lisa McCoy &lt;lisa@example.com&gt; wrote: Earlier message"
+      )
+    ).toBe("Doing well, thanks!");
+  });
+
+  it("ignores a later self-authored message without a SENT label", () => {
+    const messages = [
+      gmailMessage("sent-1", ["SENT"], "1725289200000", {
+        from: "Lever <james.jones59878@gmail.com>",
+      }),
+      gmailMessage("reply-1", ["INBOX", "UNREAD"], "1725289260000", {
+        body: "Yes, I am still around.",
+        from: "Lisa <lisa@palettelabs.io>",
+        subject: "Re: Still around?",
+      }),
+      gmailMessage("self-reply", ["INBOX"], "1725289320000", {
+        body: "Thanks for replying.",
+        from: "james.jones59878@gmail.com",
+        subject: "Re: Still around?",
+      }),
+    ];
+
+    expect(
+      findReplyAfterSentMessage(
+        { messages },
+        "sent-1",
+        "2026-09-02T15:00:00.000Z"
+      )
+    ).toMatchObject({
+      excerpt: "Yes, I am still around.",
+      from: "Lisa <lisa@palettelabs.io>",
+      messageId: "reply-1",
+    });
+  });
+
+  it("labels reply watcher messages as email notifications", () => {
+    expect(
+      formatEmailReplyNotification({
+        excerpt: "Yes, I am still around.",
+        from: "Lisa <lisa@palettelabs.io>",
+        subject: "Re: Still around?",
+      })
+    ).toBe(
+      "Email reply\nLisa <lisa@palettelabs.io> replied to “Re: Still around?”:\n\n“Yes, I am still around.”"
     );
   });
 });
