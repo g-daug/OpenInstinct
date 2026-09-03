@@ -147,7 +147,7 @@ beforeEach(() => {
 const workerContext = toolContextFor({ sessionId: "worker-session-1" });
 
 describe("Kernel browser contract", () => {
-  it("keeps agent-created browsers alive for at least 15 minutes", () => {
+  it("keeps agent-created browsers alive for an hour by default", () => {
     const inputSchema = manageBrowsers.inputSchema;
     if (!(inputSchema instanceof z.ZodType)) {
       throw new Error("manage_browsers must use a Zod input schema.");
@@ -162,7 +162,7 @@ describe("Kernel browser contract", () => {
     expect(
       inputSchema.safeParse({
         action: "create",
-        timeout_seconds: 900,
+        timeout_seconds: 3600,
       }).success
     ).toBe(true);
   });
@@ -184,7 +184,7 @@ describe("Kernel browser contract", () => {
         start_url: "https://example.com/checkout",
         stealth: true,
         telemetry: { browser: { page: { enabled: true } }, enabled: true },
-        timeout_seconds: 900,
+        timeout_seconds: 3600,
         viewport: undefined,
       },
       { signal: workerContext.abortSignal }

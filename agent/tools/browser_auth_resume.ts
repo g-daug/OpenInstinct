@@ -22,7 +22,7 @@ const inputSchema = z.discriminatedUnion("action", [
 
 export default defineTool({
   description:
-    "Safely inspect, resume, or cancel the current user's pending browser-authentication checkpoint. Use pending when a message may answer an OTP or other authentication request. Use resume only when the user clearly supplied the requested transient input or confirmed the requested action, then call the worker with the returned worker_agent_id. Never store the user's code or include it in this tool.",
+    "Safely inspect, resume, or cancel the current user's pending browser-authentication checkpoint. Use pending when a message may answer an OTP or other authentication request. Use resume when the user supplied the requested transient input, confirmed the requested action, reports that a code never arrived, or asks to use another verification method; then call the worker with the returned worker_agent_id. Never store the user's code or include it in this tool.",
   inputSchema,
   async execute(input, context) {
     const caller =

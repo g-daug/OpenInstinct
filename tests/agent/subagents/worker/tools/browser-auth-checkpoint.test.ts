@@ -1,5 +1,6 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- Kernel's SDK response type is broader than the delete result exercised by this focused tool test. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type {
   createBrowserAuthCheckpoint,
   finishBrowserAuthCheckpoint,
@@ -78,6 +79,21 @@ beforeEach(() => {
 });
 
 describe("browser authentication checkpoints", () => {
+  it("keeps authentication checkpoints active for 30 minutes by default", () => {
+    const inputSchema = manageAuthCheckpoint.inputSchema;
+    if (!(inputSchema instanceof z.ZodType)) {
+      throw new Error("manage_auth_checkpoint must use a Zod input schema.");
+    }
+    expect(
+      inputSchema.parse({
+        action: "pause",
+        browser_session_id: "browser-1",
+        challenge_type: "otp_sms",
+        origin: "https://accounts.google.com",
+      })
+    ).toMatchObject({ expires_in_seconds: 1800 });
+  });
+
   it("closes a writable browser before pausing for vault login setup", async () => {
     const context = toolContextFor({
       parentSessionId: "root-1",

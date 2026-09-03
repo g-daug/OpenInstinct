@@ -17,7 +17,7 @@ const inputSchema = z.discriminatedUnion("action", [
     action: z.literal("pause"),
     browser_session_id: z.string().trim().min(1),
     challenge_type: z.enum(browserAuthChallengeTypes),
-    expires_in_seconds: z.number().int().min(60).max(1800).default(900),
+    expires_in_seconds: z.number().int().min(60).max(3600).default(1800),
     origin: z.url(),
   }),
   z.object({
@@ -28,7 +28,7 @@ const inputSchema = z.discriminatedUnion("action", [
 
 export default defineTool({
   description:
-    "Persist or finish a browser authentication checkpoint. Pause immediately before returning an OTP, push, passkey, CAPTCHA, login-setup, approval, or other authentication blocker. The tool creates a safe prompt and never accepts secret-bearing text. Complete or fail the checkpoint when the resumed browser task reaches a terminal state.",
+    "Persist or finish a browser authentication checkpoint. Pause immediately before returning an OTP, push, passkey, CAPTCHA, login-setup, approval, or other authentication blocker. Checkpoints remain active for 30 minutes by default. The tool creates a safe prompt and never accepts secret-bearing text. Complete or fail the checkpoint when the resumed browser task reaches a terminal state.",
   inputSchema,
   async execute(input, context) {
     const scope = await requireWorkerScope(context);

@@ -26,6 +26,7 @@ import {
 } from "@/agent/subagents/worker/lib/trace/domains";
 
 const browserTimeoutFloorSeconds = 15 * 60;
+const browserDefaultTimeoutSeconds = 60 * 60;
 const staleProfileWriterAgeMs = 10 * 60 * 1000;
 const profileLeaseRetryDelaysMs = [100, 250, 500, 1000, 2000, 4000];
 
@@ -245,7 +246,7 @@ async function createBrowserWithProfileLeaseRecovery(
           browser: { page: { enabled: true } },
           enabled: true,
         },
-        timeout_seconds: input.timeout_seconds ?? browserTimeoutFloorSeconds,
+        timeout_seconds: input.timeout_seconds ?? browserDefaultTimeoutSeconds,
         viewport: browserViewport(input),
       },
       { signal }
