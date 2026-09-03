@@ -33,6 +33,16 @@ describe("worker input bubbling", () => {
       "Cancel it only when the user explicitly asks"
     );
     expect(browserSkill).toContain("`manage_auth_checkpoint` with `pause`");
+    expect(browserSkill).toContain(
+      "verify that the target view is operational, not merely visible"
+    );
+    expect(browserSkill).toContain(
+      "An enabled submit control alone is not readiness"
+    );
+    expect(browserSkill).toContain("treat the interaction as a proven no-op");
+    expect(browserSkill).toContain(
+      "submit exactly once more only after readiness passes"
+    );
     expect(browserSkill).toContain("End the turn immediately");
   });
 });
